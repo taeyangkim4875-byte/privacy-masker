@@ -2,7 +2,7 @@ package com.piimask.core.mask;
 
 import com.piimask.core.EntityType;
 import com.piimask.core.Span;
-import com.piimask.core.detect.Validators;
+import com.piimask.core.normalize.KoreanDigits;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -62,7 +62,7 @@ public final class Masker {
     static String partial(String value, EntityType type) {
         return switch (type) {
             case PHONE -> {
-                String d = Validators.digitsOnly(value);
+                String d = KoreanDigits.digits(value);
                 if (d.length() < 9) {
                     // 뒤 4자리만 읽어 주는 경우 등 짧은 번호는 남길 자리가 없으므로 전부 가린다
                     yield maskDigits(value, 0, 0);
@@ -80,14 +80,14 @@ public final class Masker {
         };
     }
 
-    /** 숫자만 세어 앞 keepHead, 뒤 keepTail 자리를 남기고 나머지 숫자를 * 로 */
+    /** 숫자(아라비아·한글 숫자 음절)만 세어 앞 keepHead, 뒤 keepTail 자리를 남기고 나머지 숫자를 * 로 */
     static String maskDigits(String value, int keepHead, int keepTail) {
-        int total = Validators.digitsOnly(value).length();
+        int total = KoreanDigits.digits(value).length();
         StringBuilder sb = new StringBuilder(value.length());
         int idx = 0;
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
-            if (c >= '0' && c <= '9') {
+            if (KoreanDigits.isDigitLike(c)) {
                 boolean keep = idx < keepHead || idx >= total - keepTail;
                 sb.append(keep ? c : '*');
                 idx++;
@@ -137,10 +137,10 @@ public final class Masker {
         return sb.toString();
     }
 
-    /** 숫자형은 숫자만 남겨 형식이 달라도 같은 토큰이 되게 한다 */
+    /** 숫자형은 숫자만 남겨 형식이 달라도(한글로 읽은 번호 포함) 같은 토큰이 되게 한다 */
     static String normalize(String value, EntityType type) {
         return switch (type) {
-            case PHONE, CARD, RRN, ACCOUNT -> Validators.digitsOnly(value);
+            case PHONE, CARD, RRN, ACCOUNT -> KoreanDigits.digits(value);
             case EMAIL -> value.toLowerCase();
             case NAME -> value.replace(" ", "");
         };

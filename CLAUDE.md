@@ -4,7 +4,8 @@ STT/TTS 이력 DB(MariaDB)의 개인정보를 탐지·마스킹해 별도 테이
 전체 계획·단계·완료 기준은 `docs/PLAN.md` 를 따른다. 작업은 PLAN 의 T 항목 하나씩, 계획 승인 후 구현한다.
 
 ## 구조
-- `masking-core/`  탐지·병합·치환 엔진. 순수 Java, Spring·DB 의존성 금지
+- `masking-core/`  탐지·병합·치환 엔진. 순수 Java, Spring·DB 의존성 금지. `normalize/` 는 ITN(한글로 읽은 숫자 → 숫자열, 원문 오프셋 유지)
+  - 탐지 규칙을 바꾸면 `SeedRegressionTest`(시드 전체 ITN 끔/켬 비교, 유형별 건수 출력)가 함께 돈다
 - `masking-app/`   Spring Boot 4.1: 접속·작업 설정 API, 증분 배치, 스케줄, H2 메타 DB
 - `masking-ui/`    React + Vite. 빌드 결과는 Gradle 이 app 의 static/ 에 넣는다
 - `docker/`        로컬 테스트용 MariaDB 스키마와 가짜 시드(`scripts/gen_seed.py` 로 생성)

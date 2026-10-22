@@ -4,6 +4,7 @@
 
     python scripts/gen_seed.py            # docker/mariadb/init/02-seed.sql 다시 생성
     python scripts/gen_seed.py --calls 2000
+    python scripts/gen_seed.py --itn-calls 0   # ITN 검증 통화 없이
 """
 import argparse
 import random
@@ -103,6 +104,64 @@ def call(r):
     return u
 
 
+def kor_read(s, r):
+    """숫자 문자열을 한 자리씩 한글로 읽는다. 그룹 구분은 공백 / '에' / 붙여 읽기 중 하나"""
+    groups = [g for g in s.replace(" ", "-").split("-") if g]
+    readings = ["".join(KOR_DIGIT[int(c)] for c in g) for g in groups]
+    if r.random() < 0.2:
+        readings[0] = readings[0].replace("공", "영")  # '영일영'
+    if len(groups) >= 3 and r.random() < 0.1:
+        readings[1] = groups[1]  # STT 가 일부만 숫자로 낸 경우: '공일공4821칠칠삼육'
+        return "".join(readings)
+    return r.choice([" ", "에 ", "", "-", ", "]).join(readings)
+
+
+def itn_call(r):
+    """ITN 검증용 통화: 한글로 읽은 번호(정탐)와 숫자처럼 보이지만 개인정보가 아닌 표현(오탐 유도)"""
+    agent, cust = name(r), name(r)
+    u = [("AGENT", f"안녕하세요 고객님, 상담원 {agent}입니다. 무엇을 도와드릴까요?"),
+         ("CUSTOMER", f"{r.choice(INTENTS)} 때문에 전화드렸어요."),
+         ("AGENT", "본인 확인을 위해 성함 말씀해 주시겠어요?"),
+         ("CUSTOMER", f"{cust}입니다."),
+         ("AGENT", f"{cust} 고객님 확인 감사합니다. 연락처 확인 부탁드립니다.")]
+    mid, last = r.randint(100, 9999), r.randint(1000, 9999)
+    p = f"010-{mid}-{last}"
+    if r.random() < 0.2:
+        u.append(("CUSTOMER", f"010에 {kor_read(f'{mid}-{last}', r)}{r.choice(['이요.', ' 이요.', '입니다.'])}"))
+    else:
+        u.append(("CUSTOMER", f"{kor_read(p, r)}{r.choice(['이요.', ' 이요.', '이에요.', '입니다.', ' 이 번호로 주세요.'])}"))
+    if r.random() < 0.3:
+        u.append(("CUSTOMER", f"회사 번호는 {kor_read(f'02-{r.randint(100, 9999)}-{r.randint(1000, 9999)}', r)} 입니다."))
+    pick = r.random()
+    if pick < 0.35:
+        u.append(("AGENT", "카드 번호 전체를 말씀해 주시겠어요?"))
+        u.append(("CUSTOMER", f"{kor_read(card(r).replace(' ', '-'), r)} 입니다."))
+    elif pick < 0.65:
+        u.append(("AGENT", "주민등록번호 앞자리와 뒷자리를 말씀해 주세요."))
+        u.append(("CUSTOMER", f"{kor_read(rrn(r), r)}이요."))
+    else:
+        u.append(("CUSTOMER", f"환불은 {r.choice(BANKS)} {kor_read(account(r), r)} 계좌로 부탁드려요."))
+    # 오탐 유도: 숫자 음절이 들어가지만 개인정보가 아닌 표현(자릿수 단어, 짧은 숫자, 일반 단어)
+    u.append(("AGENT", r.choice([
+        "본인 확인되셨으면 일번을 눌러주세요.",
+        f"이번 달 결제 금액은 {r.choice(['삼십만원', '오만 삼천원', '이십사만 칠천원'])}입니다.",
+        "이천이십육년 시월에 가입하셨네요.",
+        f"결제일은 매월 {r.choice(['오일', '십사일', '이십오일'])}입니다.",
+    ])))
+    u.append(("CUSTOMER", r.choice([
+        f"예전 번호 010-{r.randint(1000, 9999)}-{r.randint(1000, 9999)} 오늘부터 안 써요.",
+        f"010-{r.randint(1000, 9999)}-{r.randint(1000, 9999)} 이 번호로도 연락 주세요.",
+        "일일이 이삼일 걸린대요.",
+        "이사 가서 주소가 바뀌었어요.",
+        "사이에 다른 카드도 있었어요.",
+        "일일 한도는 오백만원으로 해 주세요.",
+        "공사 중이라 구일 오후에 다시 전화할게요.",
+    ])))
+    u.append(("AGENT", "네 처리되었습니다. 다른 문의 있으실까요?"))
+    u.append(("CUSTOMER", "아니요 감사합니다."))
+    return u
+
+
 ROMAN_SURNAME = {"김": "KIM", "이": "LEE", "박": "PARK", "최": "CHOI", "정": "JUNG", "강": "KANG", "조": "CHO",
                  "윤": "YOON", "장": "JANG", "임": "LIM", "한": "HAN", "오": "OH", "서": "SEO", "신": "SHIN",
                  "권": "KWON", "황": "HWANG", "안": "AHN", "송": "SONG", "홍": "HONG", "고": "KO", "문": "MOON"}
@@ -158,6 +217,7 @@ def sql_str(s):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--calls", type=int, default=300)
+    ap.add_argument("--itn-calls", type=int, default=40, help="한글로 읽은 숫자 검증용 통화 수(기존 행과 별도 난수)")
     ap.add_argument("--seed", type=int, default=20261022)
     ap.add_argument("--out", default=str(Path(__file__).resolve().parent.parent / "docker/mariadb/init/02-seed.sql"))
     a = ap.parse_args()
@@ -189,6 +249,19 @@ def main():
         chunk = rows[k:k + 200]
         lines.append("INSERT INTO stt_call_history (call_id, seq, speaker, utterance, created_at) VALUES")
         lines.append(",\n".join(f"({sql_str(c)}, {s}, {sql_str(sp)}, {sql_str(tx)}, {sql_str(ts)})" for c, s, sp, tx, ts in chunk) + ";")
+    # ITN(한글로 읽은 숫자) 통화: 기존 행이 바뀌지 않도록 별도 난수로 만들어 뒤에 붙인다
+    r_itn = random.Random(a.seed + 7)
+    itn_rows = []
+    t3 = datetime(2026, 10, 21, 9, 0, 0)
+    for i in range(a.itn_calls):
+        k = a.calls + i
+        call_id = f"C20261021-{k:05d}"
+        t3 += timedelta(minutes=r_itn.randint(1, 40))
+        for j, (spk, text) in enumerate(itn_call(r_itn)):
+            itn_rows.append((call_id, j + 1, spk, text, (t3 + timedelta(seconds=j * 9)).strftime("%Y-%m-%d %H:%M:%S")))
+    if itn_rows:
+        lines.append("INSERT INTO stt_call_history (call_id, seq, speaker, utterance, created_at) VALUES")
+        lines.append(",\n".join(f"({sql_str(c)}, {s}, {sql_str(sp)}, {sql_str(tx)}, {sql_str(ts)})" for c, s, sp, tx, ts in itn_rows) + ";")
     lines.append("INSERT INTO tts_request_log (request_text, channel, requested_at) VALUES")
     lines.append(",\n".join(f"({sql_str(tx)}, {sql_str(ch)}, {sql_str(ts)})" for tx, ch, ts in tts) + ";")
     t2 = datetime(2026, 10, 20, 9, 0, 0)
@@ -201,7 +274,7 @@ def main():
             vals.append(f"({sql_str(c)}, {sql_str(sc)}, {sql_str(x)}, {sql_str(ts)})")
         lines.append(",\n".join(vals) + ";")
     Path(a.out).write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"wrote {len(rows)} utterances / {a.calls} calls, {len(tts)} tts rows, {len(ssml)} ssml rows -> {a.out}")
+    print(f"wrote {len(rows)} + {len(itn_rows)} (ITN) utterances / {a.calls} + {a.itn_calls} calls, {len(tts)} tts rows, {len(ssml)} ssml rows -> {a.out}")
 
 
 if __name__ == "__main__":

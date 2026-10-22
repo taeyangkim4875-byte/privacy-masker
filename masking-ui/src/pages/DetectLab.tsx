@@ -105,7 +105,7 @@ export default function DetectLab() {
         <div className="panel" style={{ marginTop: 20 }}>
           <h2>탐지기 목록</h2>
           <p className="small muted" style={{ marginTop: -6 }}>
-            한글로 읽은 숫자("공일공…")와 문맥 없이 말한 이름은 아직 놓칩니다. 각각 2단계(ITN 정규화)와 3단계(이름 모델)에서 다룹니다.
+            한글로 읽은 숫자("공일공 사팔이일…", "공일공에 사팔이일에…")는 ITN 정규화를 거쳐 전화·카드·주민·계좌 탐지기로 한 번 더 확인하고, 원문 위치를 가립니다(탐지기 이름에 "(ITN)" 표시). 자릿수 단어("삼십만원")와 9자리 미만 숫자는 바꾸지 않습니다. 문맥 없이 말한 이름은 아직 놓칩니다(3단계 이름 모델).
           </p>
           <div className="table-wrap">
             <table>
