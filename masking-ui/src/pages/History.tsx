@@ -1,11 +1,15 @@
 import { Fragment, useState } from 'react'
 import { api } from '../api'
 import { num, Status, usePoll } from '../components'
+import { useHas } from '../auth'
 
 export default function History() {
-  const [tab, setTab] = useState<'exec' | 'audit'>('exec')
-  const exec = usePoll(() => api.executions(100), 5000)
-  const audit = usePoll(() => api.audit(100), 10000)
+  // 실행 이력: 설정자·실행자·감사자 / 감사 로그: 감사자·관리자
+  const canExec = useHas('CONFIGURER', 'OPERATOR', 'AUDITOR')
+  const canAudit = useHas('AUDITOR', 'ADMIN')
+  const [tab, setTab] = useState<'exec' | 'audit'>(canExec ? 'exec' : 'audit')
+  const exec = usePoll(() => (canExec ? api.executions(100) : Promise.resolve([])), 5000)
+  const audit = usePoll(() => (canAudit ? api.audit(100) : Promise.resolve([])), 10000)
 
   return (
     <>
@@ -15,8 +19,8 @@ export default function History() {
           <p>배치 실행 결과와 설정 변경 기록입니다. 데이터 값은 남기지 않고 건수와 위치만 기록합니다.</p>
         </div>
         <div className="seg" role="tablist">
-          <button role="tab" aria-pressed={tab === 'exec'} aria-selected={tab === 'exec'} onClick={() => setTab('exec')}>실행 이력</button>
-          <button role="tab" aria-pressed={tab === 'audit'} aria-selected={tab === 'audit'} onClick={() => setTab('audit')}>감사 로그</button>
+          {canExec && <button role="tab" aria-pressed={tab === 'exec'} aria-selected={tab === 'exec'} onClick={() => setTab('exec')}>실행 이력</button>}
+          {canAudit && <button role="tab" aria-pressed={tab === 'audit'} aria-selected={tab === 'audit'} onClick={() => setTab('audit')}>감사 로그</button>}
         </div>
       </div>
 

@@ -38,5 +38,7 @@ STT/TTS 이력 DB(MariaDB)의 개인정보를 탐지·마스킹해 별도 테이
 - 배치 단계(reader/processor/writer)에서 나가는 예외는 `SanitizedBatchException` 으로 감싼다(원인 미첨부). Batch 가 스택 트레이스를 로그·EXIT_MESSAGE 에 남기기 때문
 - 우리 메타 `JobRepository` 빈 이름은 `maskingJobRepository`(Batch 의 `jobRepository` 와 충돌 방지)
 - 스케줄은 Quartz 대신 Spring `ThreadPoolTaskScheduler`. 영속 스케줄이 필요해지면 4단계에서 검토
-- 로그인 없음. 대신 127.0.0.1 바인딩. T10 에서 추가
+- 로그인·역할(T10): 권한 표는 `security/SecurityConfig` 한 곳. 새 API 를 만들면 표와 `AccessMatrixTest` 에 함께 추가한다(표에 없는 /api/** 는 denyAll)
+- 원문이 보이는 기능(미리보기·탐지 테스트)은 설정자 전용. 감사 로그 actor 는 `CurrentUser`(요청 밖은 system / system:scheduler)
+- 127.0.0.1 바인딩은 유지(HTTPS·외부 공개는 4단계)
 - 규칙 기반 이름 탐지(`NameRuleDetector`)를 2단계에서 당겨 넣음(베이스라인 용도)

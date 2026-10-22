@@ -2,6 +2,12 @@ server:
   # 로컬 테스트용: 이 PC에서만 접속 가능. 서버 배포 시 4단계에서 인증과 함께 변경
   address: ${PIIMASK_BIND:127.0.0.1}
   port: ${PIIMASK_PORT:8080}
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        http-only: true
+        same-site: strict
 
 spring:
   application:
@@ -23,7 +29,10 @@ spring:
 piimask:
   # 메타 DB 파일과 마스터키 파일 위치
   data-dir: ${PIIMASK_DATA_DIR:./data}
-  actor: local-admin
+  # 최초 관리자(선택): 계정이 하나도 없을 때 첫 기동에서 이 값으로 만든다. 없으면 data-dir/setup.token 으로 화면에서 설정
+  admin:
+    username: ${PIIMASK_ADMIN_USER:}
+    password: ${PIIMASK_ADMIN_PASSWORD:}
 
 logging:
   level:

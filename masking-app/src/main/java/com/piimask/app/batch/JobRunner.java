@@ -6,6 +6,7 @@ import com.piimask.app.connection.DataSourceRegistry;
 import com.piimask.app.connection.SchemaService;
 import com.piimask.app.job.JobDef;
 import com.piimask.app.job.JobRepository;
+import com.piimask.app.security.CurrentUser;
 import com.piimask.app.support.ApiException;
 import com.piimask.app.support.AuditService;
 import com.piimask.app.support.Errors;
@@ -89,10 +90,12 @@ public class JobRunner implements DisposableBean {
             running.remove(jobId);
             throw e;
         }
-        audit.log("JOB_RUN", "job#" + jobId + " " + job.name() + " exec#" + execId + " (" + trigger + ")", "STARTED");
+        // 배치 완료 기록은 다른 스레드에서 남기므로 실행한 사람을 여기서 정해 넘긴다
+        String actor = "CRON".equals(trigger) ? CurrentUser.SCHEDULER : CurrentUser.name();
+        audit.logAs(actor, "JOB_RUN", "job#" + jobId + " " + job.name() + " exec#" + execId + " (" + trigger + ")", "STARTED");
         pool.submit(() -> {
             try {
-                execute(job, execId, stopFlag);
+                execute(job, execId, stopFlag, actor);
             } finally {
                 running.remove(jobId);
             }
@@ -123,7 +126,7 @@ public class JobRunner implements DisposableBean {
         return true;
     }
 
-    private void execute(JobDef job, long execId, AtomicBoolean stopFlag) {
+    private void execute(JobDef job, long execId, AtomicBoolean stopFlag, String actor) {
         RunState state = new RunState(job.id(), execId, stopFlag, jobs.watermark(job.id()));
         try {
             DataSource ds = registry.get(connections.secret(job.connectionId()));
@@ -135,23 +138,23 @@ public class JobRunner implements DisposableBean {
             executions.progress(execId, state.read, state.maskedRows, state.spanCount, state.written, state.watermark);
             if (je.getStatus() == BatchStatus.COMPLETED) {
                 executions.finish(execId, "SUCCESS", null);
-                audit.log("JOB_RUN", "job#" + job.id() + " exec#" + execId, "SUCCESS");
+                audit.logAs(actor, "JOB_RUN", "job#" + job.id() + " exec#" + execId, "SUCCESS");
             } else if (je.getStatus() == BatchStatus.STOPPED) {
                 executions.finish(execId, "STOPPED", "사용자 요청으로 중지. 다시 실행하면 이어서 진행합니다");
-                audit.log("JOB_RUN", "job#" + job.id() + " exec#" + execId, "STOPPED");
+                audit.logAs(actor, "JOB_RUN", "job#" + job.id() + " exec#" + execId, "STOPPED");
             } else {
-                fail(job, execId, state, failureMessage(je));
+                fail(job, execId, state, failureMessage(je), actor);
             }
         } catch (Exception e) {
-            fail(job, execId, state, Errors.safeMessage(e));
+            fail(job, execId, state, Errors.safeMessage(e), actor);
         }
     }
 
-    private void fail(JobDef job, long execId, RunState state, String msg) {
+    private void fail(JobDef job, long execId, RunState state, String msg, String actor) {
         log.error("job#{} exec#{} 실패", job.id(), execId);
         executions.progress(execId, state.read, state.maskedRows, state.spanCount, state.written, state.watermark);
         executions.finish(execId, "FAILED", msg);
-        audit.log("JOB_RUN", "job#" + job.id() + " exec#" + execId, "FAILED");
+        audit.logAs(actor, "JOB_RUN", "job#" + job.id() + " exec#" + execId, "FAILED");
     }
 
     /** 실행 이력용 메시지: SanitizedBatchException 이 들고 온 safeMessage(기존 형식) */

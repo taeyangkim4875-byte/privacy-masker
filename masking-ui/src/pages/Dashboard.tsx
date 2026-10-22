@@ -1,9 +1,12 @@
 import { api, type Job } from '../api'
 import { num, Status, usePoll } from '../components'
 import type { Go, Notify } from '../App'
+import { useHas } from '../auth'
 
 export default function Dashboard({ go, notify }: { go: Go; notify: Notify }) {
   const { data, error, reload } = usePoll(api.dashboard, 3000)
+  const canConfig = useHas('CONFIGURER')
+  const canRun = useHas('OPERATOR')
 
   const run = async (j: Job) => {
     try {
@@ -37,9 +40,11 @@ export default function Dashboard({ go, notify }: { go: Go; notify: Notify }) {
           <h1>현황</h1>
           <p>마스킹 작업의 상태와 최근 실행 결과입니다. 3초마다 갱신됩니다.</p>
         </div>
-        <button className="btn primary" onClick={() => go('jobs', 'new')}>
-          새 작업 만들기
-        </button>
+        {canConfig && (
+          <button className="btn primary" onClick={() => go('jobs', 'new')}>
+            새 작업 만들기
+          </button>
+        )}
       </div>
 
       <div className="summary-line">
@@ -54,10 +59,10 @@ export default function Dashboard({ go, notify }: { go: Go; notify: Notify }) {
         {data.jobs.length === 0 ? (
           <div className="empty">
             아직 작업이 없습니다. DB 접속을 등록한 뒤 첫 작업을 만들어 보세요.
-            <div className="btn-row" style={{ justifyContent: 'center', marginTop: 12 }}>
+            {canConfig && <div className="btn-row" style={{ justifyContent: 'center', marginTop: 12 }}>
               <button className="btn" onClick={() => go('connections')}>DB 접속 등록</button>
               <button className="btn primary" onClick={() => go('jobs', 'new')}>새 작업 만들기</button>
-            </div>
+            </div>}
           </div>
         ) : (
           <div className="table-wrap">
@@ -91,7 +96,7 @@ export default function Dashboard({ go, notify }: { go: Go; notify: Notify }) {
                     <td className="mono">{j.watermark ?? '처음부터'}</td>
                     <td className="small">{j.cron && j.enabled ? <span className="mono">{j.cron}</span> : <span className="muted">수동</span>}</td>
                     <td style={{ textAlign: 'right' }}>
-                      {j.running ? (
+                      {!canRun ? null : j.running ? (
                         <button className="btn small" onClick={() => stop(j)}>중지</button>
                       ) : (
                         <button className="btn small primary" onClick={() => run(j)}>실행</button>

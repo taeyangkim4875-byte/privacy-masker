@@ -814,3 +814,45 @@ textarea.input {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- 로그인·초기 설정 ---------- */
+.auth-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: var(--mist);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+}
+
+.auth-card h1 {
+  font-size: 20px;
+  margin: 0 0 4px;
+}
+
+.auth-card .btn.primary {
+  width: 100%;
+  justify-content: center;
+}
+
+.nav-user {
+  color: var(--nav-ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.nav-user b {
+  color: #fff;
+  font-weight: 500;
+}
+
+.role-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

@@ -232,7 +232,7 @@ Spring Batch 메타 테이블(`BATCH_*`)도 같은 H2에 둔다.
 | T7 미리보기 | 완료 | 저장 전 미리보기, 스팬 하이라이트, 탐지 테스트 화면 |
 | T8 배치 | 완료 | Spring Batch 6.0.5 chunk 스텝(`MaskingJobFactory`: `KeysetSourceReader` → `MaskingProcessor` → `UpsertTargetWriter`). 청크마다 대상 커밋 → 워터마크·진행 저장(Batch 메타와 같은 H2 트랜잭션). 중지는 청크 경계에서 STOPPED, 이어서 실행은 워터마크 기준(실행마다 새 JobInstance). 화면 이력·API 형식 그대로(`job_execution`). 정수 PK 숫자 바인딩. 배치 예외는 `SanitizedBatchException`(유형·SQLState 만, 원인 미첨부). 통합 테스트 9건 통과(기존 5건 무수정 + `BatchMetadataIT` 4건) |
 | T9 스케줄·실행 관리 | 완료(대체) | Quartz 대신 `ThreadPoolTaskScheduler`. 실행 이력·감사 로그 화면 |
-| T10 로그인·감사 | **부분** | 감사 로그만 있음. 로그인·역할 분리 없음(127.0.0.1 바인딩으로 대신) |
+| T10 로그인·감사 | 완료 | Spring Security 7.1: 로컬 계정 폼 로그인(JSON 응답)+세션(30분), bcrypt(`{bcrypt}` 접두), CSRF(SPA 쿠키), 5회 실패 10분 잠금. 역할 4개(설정자·실행자·감사자 + 관리자: 계정 관리·감사 조회), 권한 표는 `SecurityConfig` 한 곳·표에 없는 API 는 거부. 최초 관리자는 `data/setup.token`(일회용) 또는 `PIIMASK_ADMIN_USER/PASSWORD`, 관리자가 모두 사용 중지되면 같은 환경변수로 복구. 감사 로그 actor = 로그인 사용자(배치는 시작한 사용자, 스케줄은 `system:scheduler`). 역할 변경·사용 중지·비밀번호 재설정은 로그인 중인 세션에 바로 반영. SAML 은 구조만(역할은 항상 `app_user`, `auth_source`). 화면: 로그인·초기 설정·사용자 관리·내 계정, 역할별 메뉴·버튼 제한. 테스트: 보안 14건(권한 표 전체 포함) + 통합 10건 통과 |
 
 **1단계 완료 기준 검증 (2026-10-22, 포터블 MariaDB 11.4 대상 `integrationTest` 5건 통과)**
 
@@ -256,6 +256,10 @@ Spring Batch 메타 테이블(`BATCH_*`)도 같은 H2에 둔다.
 - (T8) `BATCH_*` 테이블이 실행마다 인스턴스·실행·스텝 1건씩 쌓이고 정리하지 않는다. `job_execution` 보존 정책을 정할 때 함께 정리
 - (T8) 쓰기 실패 시 Batch 가 "Retry exhausted ... not skippable" ERROR 로그를 한 줄 더 남긴다(재시도 미사용 스텝의 기본 동작, 소음)
 - (T8) 10만 건 중지·재시작 테스트 시간: 전환 전 38~40초, 전환 후 33~47초(실행마다 편차)
+- (T10 결정 필요) 관리자가 자기 계정에 설정자 역할을 붙이면 원문(미리보기)을 볼 수 있다. 승인된 설계("혼자 쓰면 관리자에게 역할 추가")대로 허용하고 감사 로그(USER_UPDATE, 역할 목록 포함)에만 남긴다. 직무 분리를 강제하려면 "본인 역할 변경 금지" 또는 "관리자+설정자 조합 금지"를 추가
+- (T10) 잠금 메시지가 계정 존재를 드러낸다(없는 계정은 잠기지 않음). 동시 대량 시도는 잠금 전까지 5회를 넘길 수 있고, 누구나 5회 실패로 남의 계정을 10분 잠글 수 있다(로컬 바인딩 전제로 수용)
+- (T10) 세션 쿠키 `secure` 미설정(127.0.0.1 HTTP 전제). 4단계 HTTPS 와 함께 켠다
+- (T10) 로그인 필터가 매 요청 `app_user` 를 1회 조회한다(H2 로컬, 비용 작음)
 
 **테스트 데이터**: `docker/mariadb/init/02-seed.sql`(`scripts/gen_seed.py` 로 생성, 전부 가짜). 테이블 `stt_call_history`(3,245), `tts_request_log`(80), `tts_ssml_log`(901, 콜봇 SSML). `CALL make_bulk(30)` 으로 약 10만 행.
 

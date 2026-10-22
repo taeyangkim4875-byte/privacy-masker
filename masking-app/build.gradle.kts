@@ -12,10 +12,13 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-batch-jdbc")
+    implementation("org.springframework.boot:spring-boot-starter-security")
     runtimeOnly("com.h2database:h2")
     runtimeOnly("org.mariadb.jdbc:mariadb-java-client")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-security-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
@@ -26,6 +29,8 @@ dependencies {
 // ---------------------------------------------------------------
 tasks.named<Test>("test") {
     useJUnitPlatform { excludeTags("integration") }
+    // 보안 테스트의 메타 DB(H2)를 매번 새로 만든다
+    doFirst { delete(layout.buildDirectory.dir("test-data")) }
 }
 
 val integrationTest by tasks.registering(Test::class) {

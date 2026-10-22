@@ -147,3 +147,20 @@ CREATE TABLE IF NOT EXISTS BATCH_JOB_EXECUTION_CONTEXT (
 CREATE SEQUENCE IF NOT EXISTS BATCH_STEP_EXECUTION_SEQ;
 CREATE SEQUENCE IF NOT EXISTS BATCH_JOB_EXECUTION_SEQ;
 CREATE SEQUENCE IF NOT EXISTS BATCH_JOB_INSTANCE_SEQ;
+
+-- 로그인 계정(T10). 비밀번호는 DelegatingPasswordEncoder 해시({bcrypt}...)만 저장. SSO 계정은 password_hash 가 NULL
+CREATE TABLE IF NOT EXISTS app_user (
+    id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+    username      VARCHAR(100) NOT NULL UNIQUE,
+    password_hash VARCHAR(200),
+    display_name  VARCHAR(100) NOT NULL,
+    roles         VARCHAR(100) NOT NULL,
+    enabled       BOOLEAN      NOT NULL DEFAULT TRUE,
+    auth_source   VARCHAR(10)  NOT NULL DEFAULT 'LOCAL',
+    failed_count  INT          NOT NULL DEFAULT 0,
+    locked_until  TIMESTAMP,
+    last_login_at TIMESTAMP,
+    password_changed_at TIMESTAMP,
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

@@ -16,9 +16,12 @@ import {
 } from '../api'
 import { EntityChips, Legend, MaskedText, num, SourceText, Status } from '../components'
 import type { Go, Notify } from '../App'
+import { useHas } from '../auth'
 
 export default function Jobs({ go, notify, arg }: { go: Go; notify: Notify; arg: string | null }) {
   const [jobs, setJobs] = useState<Job[] | null>(null)
+  // 작업 편집기는 접속·스키마 API 를 쓰므로 설정자만 연다
+  const canConfig = useHas('CONFIGURER')
 
   const load = () => api.jobs().then(setJobs).catch((e: Error) => notify({ kind: 'bad', text: e.message }))
   useEffect(() => {
@@ -26,8 +29,8 @@ export default function Jobs({ go, notify, arg }: { go: Go; notify: Notify; arg:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arg])
 
-  if (arg === 'new') return <JobEditor key="new" job={null} go={go} notify={notify} onSaved={load} />
-  if (arg && jobs) {
+  if (canConfig && arg === 'new') return <JobEditor key="new" job={null} go={go} notify={notify} onSaved={load} />
+  if (canConfig && arg && jobs) {
     const j = jobs.find((x) => String(x.id) === arg)
     if (j) return <JobEditor key={j.id} job={j} go={go} notify={notify} onSaved={load} />
   }
@@ -39,7 +42,7 @@ export default function Jobs({ go, notify, arg }: { go: Go; notify: Notify; arg:
           <h1>마스킹 작업</h1>
           <p>원천 테이블의 어떤 컬럼을 어떻게 가려서 어느 테이블에 쌓을지 정한 설정입니다.</p>
         </div>
-        <button className="btn primary" onClick={() => go('jobs', 'new')}>새 작업 만들기</button>
+        {canConfig && <button className="btn primary" onClick={() => go('jobs', 'new')}>새 작업 만들기</button>}
       </div>
       <div className="panel">
         {!jobs ? (
@@ -61,7 +64,7 @@ export default function Jobs({ go, notify, arg }: { go: Go; notify: Notify; arg:
               </thead>
               <tbody>
                 {jobs.map((j) => (
-                  <tr key={j.id} className="clickable" onClick={() => go('jobs', j.id)}>
+                  <tr key={j.id} className={canConfig ? 'clickable' : undefined} onClick={canConfig ? () => go('jobs', j.id) : undefined}>
                     <td style={{ fontWeight: 500 }}>{j.name}</td>
                     <td>{j.connectionName}</td>
                     <td className="mono">{j.sourceTable} → {j.targetTable}</td>
@@ -91,6 +94,7 @@ const CRON_PRESETS: { label: string; value: string }[] = [
 ]
 
 function JobEditor({ job, go, notify, onSaved }: { job: Job | null; go: Go; notify: Notify; onSaved: () => void }) {
+  const canRun = useHas('OPERATOR')
   const [connections, setConnections] = useState<Connection[]>([])
   const [tables, setTables] = useState<TableInfo[]>([])
   const [columns, setColumns] = useState<ColumnInfo[]>([])
@@ -270,7 +274,7 @@ function JobEditor({ job, go, notify, onSaved }: { job: Job | null; go: Go; noti
           <button className="btn" onClick={() => go('jobs')}>목록</button>
           {job && <button className="btn" onClick={resetWm}>처리 위치 초기화</button>}
           {job && <button className="btn danger" onClick={remove}>삭제</button>}
-          {job && <button className="btn primary" onClick={runNow} disabled={job.running}>{job.running ? '실행 중' : '지금 실행'}</button>}
+          {job && canRun && <button className="btn primary" onClick={runNow} disabled={job.running}>{job.running ? '실행 중' : '지금 실행'}</button>}
         </div>
       </div>
 

@@ -92,6 +92,37 @@ class BatchMetadataIT extends BatchItSupport {
         assertFalse(logs.contains("Caused by: java.sql") || logs.contains("Caused by: org.mariadb"), "드라이버 예외 원문이 로그에 남음");
     }
 
+    /** T10: 배치 시작·완료 감사 기록은 실행한 사용자로, 스케줄 실행은 system:scheduler 로 남는다 */
+    @Test
+    void job_run_audit_records_the_actor() {
+        db.drop(TGT);
+        db.createSource(SRC, 1);
+        long jobId = createJob("it-meta-actor", registerConnection("it-meta-actor"), SRC, TGT, 500);
+
+        var ctx = org.springframework.security.core.context.SecurityContextHolder.createEmptyContext();
+        ctx.setAuthentication(org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated(
+                "it-operator", null, java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_OPERATOR"))));
+        org.springframework.security.core.context.SecurityContextHolder.setContext(ctx);
+        long manual;
+        try {
+            manual = runner.start(jobId, "MANUAL");
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+        await(manual, jobId);
+        assertEquals(java.util.List.of("it-operator", "it-operator"), actors(jobId, manual), "시작·완료 모두 실행한 사용자");
+
+        runner.startIfIdle(jobId, "CRON");
+        ExecutionView cron = executions.last(jobId);
+        await(cron.id(), jobId);
+        assertEquals(java.util.List.of("system:scheduler", "system:scheduler"), actors(jobId, cron.id()));
+    }
+
+    private java.util.List<String> actors(long jobId, long execId) {
+        return meta.queryForList("SELECT actor FROM audit_log WHERE action = 'JOB_RUN' AND target LIKE ? ORDER BY id",
+                String.class, "job#" + jobId + "%exec#" + execId + "%");
+    }
+
     /** 여러 작업 동시 시작: Batch 인스턴스 생성이 서로 막지 않고 모두 성공 */
     @Test
     void concurrent_starts_all_succeed() {

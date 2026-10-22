@@ -150,15 +150,72 @@ export interface AuditEntry {
   createdAt: string
 }
 
-export class ApiError extends Error {}
+export type RoleCode = 'ADMIN' | 'CONFIGURER' | 'OPERATOR' | 'AUDITOR'
 
-async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+export const ROLE_LABEL: Record<RoleCode, string> = {
+  ADMIN: '관리자',
+  CONFIGURER: '설정자',
+  OPERATOR: '실행자',
+  AUDITOR: '감사자',
+}
+
+export interface UserView {
+  id: number
+  username: string
+  displayName: string
+  roles: RoleCode[]
+  enabled: boolean
+  authSource: string
+  locked: boolean
+  lastLoginAt: string | null
+  createdAt: string
+}
+
+export interface UserRequest {
+  username?: string
+  displayName: string
+  password?: string
+  roles: RoleCode[]
+  enabled: boolean
+}
+
+export class ApiError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
+/** 세션이 끝났을 때(401) 화면이 로그인으로 돌아가도록 알린다 */
+export const UNAUTHORIZED_EVENT = 'piimask:unauthorized'
+/** 권한 없음(403): 역할이 바뀌었을 수 있으니 화면이 사용자 정보를 다시 읽는다 */
+export const FORBIDDEN_EVENT = 'piimask:forbidden'
+
+/** Spring Security 가 내려주는 CSRF 쿠키 값. 쓰기 요청 헤더로 돌려보낸다 */
+function csrfToken(): string | null {
+  const m = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)
+  return m ? decodeURIComponent(m[1]) : null
+}
+
+async function call<T>(method: string, path: string, body?: unknown, form?: URLSearchParams): Promise<T> {
+  const headers: Record<string, string> = {}
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  if (form) headers['Content-Type'] = 'application/x-www-form-urlencoded'
+  const token = csrfToken()
+  if (method !== 'GET' && token) headers['X-XSRF-TOKEN'] = token
   const res = await fetch(path, {
     method,
-    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers,
+    credentials: 'same-origin',
+    body: form ?? (body === undefined ? undefined : JSON.stringify(body)),
   })
   const text = await res.text()
+  // 로그인 시도·로그인 확인·초기 설정의 401 은 각 화면이 직접 처리한다
+  if (res.status === 401 && !['/api/auth/login', '/api/auth/me', '/api/auth/setup'].includes(path)) {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+  }
+  if (res.status === 403) window.dispatchEvent(new Event(FORBIDDEN_EVENT))
   if (!res.ok) {
     let msg = `요청 실패 (${res.status})`
     try {
@@ -167,12 +224,27 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     } catch {
       /* 본문이 JSON 이 아님 */
     }
-    throw new ApiError(msg)
+    throw new ApiError(msg, res.status)
   }
   return (text ? JSON.parse(text) : undefined) as T
 }
 
 export const api = {
+  // 로그인·계정
+  me: () => call<UserView>('GET', '/api/auth/me'),
+  login: (username: string, password: string) =>
+    call<void>('POST', '/api/auth/login', undefined, new URLSearchParams({ username, password })),
+  logout: () => call<void>('POST', '/api/auth/logout'),
+  setupStatus: () => call<{ setupRequired: boolean }>('GET', '/api/auth/setup-status'),
+  setup: (token: string, username: string, password: string, displayName: string) =>
+    call<void>('POST', '/api/auth/setup', { token, username, password, displayName }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    call<void>('POST', '/api/auth/password', { currentPassword, newPassword }),
+  users: () => call<UserView[]>('GET', '/api/users'),
+  createUser: (r: UserRequest) => call<UserView>('POST', '/api/users', r),
+  updateUser: (id: number, r: UserRequest) => call<UserView>('PUT', `/api/users/${id}`, r),
+  resetPassword: (id: number, password: string) => call<void>('POST', `/api/users/${id}/password`, { password }),
+
   meta: () => call<Meta>('GET', '/api/meta'),
   dashboard: () => call<Dashboard>('GET', '/api/dashboard'),
   executions: (limit = 100) => call<Execution[]>('GET', `/api/executions?limit=${limit}`),
