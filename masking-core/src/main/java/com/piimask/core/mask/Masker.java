@@ -63,6 +63,10 @@ public final class Masker {
         return switch (type) {
             case PHONE -> {
                 String d = Validators.digitsOnly(value);
+                if (d.length() < 9) {
+                    // 뒤 4자리만 읽어 주는 경우 등 짧은 번호는 남길 자리가 없으므로 전부 가린다
+                    yield maskDigits(value, 0, 0);
+                }
                 int head = d.startsWith("02") ? 2 : 3;
                 yield maskDigits(value, head, 4);
             }
@@ -104,15 +108,33 @@ public final class Masker {
         return local.substring(0, keep) + "*".repeat(local.length() - keep) + value.substring(at);
     }
 
+    /**
+     * 이름 부분 마스킹. 구분자(공백·쉼표·하이픈)는 그대로 두고 글자만 센다.
+     * 김태양 → 김*양, 김솔 → 김*, 고,영,환 → 고,*,환, KIM EUNMIN → K** *****N
+     */
     static String maskName(String value) {
-        int n = value.length();
-        if (n <= 1) {
-            return "*";
+        int letters = 0;
+        for (int i = 0; i < value.length(); i++) {
+            if (Character.isLetter(value.charAt(i))) {
+                letters++;
+            }
         }
-        if (n == 2) {
-            return value.charAt(0) + "*";
+        if (letters <= 1) {
+            return full(value);
         }
-        return value.charAt(0) + "*".repeat(n - 2) + value.charAt(n - 1);
+        StringBuilder sb = new StringBuilder(value.length());
+        int idx = 0;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (!Character.isLetter(c)) {
+                sb.append(c);
+                continue;
+            }
+            boolean keep = idx == 0 || (letters >= 3 && idx == letters - 1);
+            sb.append(keep ? c : '*');
+            idx++;
+        }
+        return sb.toString();
     }
 
     /** 숫자형은 숫자만 남겨 형식이 달라도 같은 토큰이 되게 한다 */

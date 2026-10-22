@@ -11,7 +11,12 @@ const SAMPLE = `상담원: 안녕하세요 고객님, 상담원 이하늘입니�
 고객: 카드 번호는 4111 1111 1111 1111 이고 주민번호는 900101-1234567입니다.
 고객: 환불은 국민은행 110-482-117736 계좌로 해주시고 메일은 minseo.park@example.com 으로 주세요.
 상담원: 네 처리되었습니다. 이번 달 결제일은 25일입니다.
-고객: 공일공 사팔이일 칠칠삼육 이 번호로 문자 주세요.`
+고객: 공일공 사팔이일 칠칠삼육 이 번호로 문자 주세요.
+<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ko-KR"><prosody rate="slow">장나예,회원님이 맞으면 1번, 아니면 2번을 눌러주세요.</prosody></speak>
+<speak version="1.0" xml:lang="ko-KR"><prosody rate="slow">KIM EUNMIN,회원님이 맞으면 1번을 눌러주세요.</prosody></speak>
+<speak version="1.0" xml:lang="ko-KR"><prosody rate="slow">고,영,환</prosody></speak>
+<speak version="1.0" xml:lang="ko-KR"><prosody rate="slow"><say-as interpret-as="telephone">7736</say-as></prosody></speak>
+<speak version="1.0" xml:lang="ko-KR"><prosody rate="slow"><say-as interpret-as="cardinal">12.5</say-as></prosody></speak>`
 
 export default function DetectLab() {
   const [meta, setMeta] = useState<Meta | null>(null)

@@ -37,12 +37,18 @@ public final class DefaultDetectors {
     public static final String EMAIL =
             "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}";
 
+    /** SSML: <say-as interpret-as="telephone">...</say-as> 안의 값은 길이와 관계없이 전화번호로 본다 */
+    public static final String SSML_TELEPHONE =
+            "<say-as\\b[^>]*interpret-as\\s*=\\s*[\"']telephone[\"'][^>]*>\\s*([^<]*?[0-9][^<]*?)\\s*</\\s*say-as\\s*>";
+
     private static final String[] ACCOUNT_KEYWORDS = {"계좌", "입금", "환불", "은행", "통장", "이체"};
 
     public static List<Detector> all() {
         return List.of(
                 new RegexDetector("휴대폰", EntityType.PHONE, MOBILE, null),
                 new RegexDetector("유선전화", EntityType.PHONE, LANDLINE, null),
+                new RegexDetector("SSML 전화(say-as)", EntityType.PHONE,
+                        java.util.regex.Pattern.compile(SSML_TELEPHONE, java.util.regex.Pattern.CASE_INSENSITIVE), 1, null),
                 new RegexDetector("카드16(Luhn)", EntityType.CARD, CARD_16,
                         (m, t, s, e) -> Validators.luhn(m)),
                 new RegexDetector("카드15(Luhn)", EntityType.CARD, CARD_15,

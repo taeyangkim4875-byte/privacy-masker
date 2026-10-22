@@ -18,6 +18,14 @@ CREATE TABLE IF NOT EXISTS tts_request_log (
     requested_at DATETIME    NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='TTS 요청 이력';
 
+CREATE TABLE IF NOT EXISTS tts_ssml_log (
+    id           BIGINT AUTO_INCREMENT PRIMARY KEY,
+    call_id      VARCHAR(32)  NOT NULL COMMENT '콜봇·ARS 통화 ID',
+    scenario     VARCHAR(40)  NOT NULL COMMENT '시나리오 단계',
+    ssml         TEXT         NOT NULL COMMENT 'TTS 합성 요청 SSML',
+    requested_at DATETIME     NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='콜봇 TTS SSML 요청 이력';
+
 -- 재시작 검증용: 기존 행을 n배로 불려 대용량을 만든다.  CALL make_bulk(30);  -> 약 10만 행
 DELIMITER //
 CREATE PROCEDURE IF NOT EXISTS make_bulk(IN times INT)

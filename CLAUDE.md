@@ -11,6 +11,9 @@ STT/TTS 이력 DB(MariaDB)의 개인정보를 탐지·마스킹해 별도 테이
 
 ## 빌드·실행
 - 전체 실행: `./run.sh` (Windows `run.cmd`) → http://127.0.0.1:8080
+  - Docker 가 없으면 포터블 MariaDB(`.local/`, 127.0.0.1:13306, stt / masker / masker-local)를 자동으로 쓴다
+  - `run.cmd -ResetDb`: 가짜 데이터 초기화, `-SkipUi`: 화면 빌드 생략
+- 백엔드 컴파일만: `gradlew.bat :masking-app:compileJava -PskipUi`
 - 엔진 테스트: `./gradlew :masking-core:test`
 - 화면만 수정: 앱 실행 상태에서 `cd masking-ui && npm run dev` (5173, /api 는 8080 으로 프록시)
 
@@ -22,6 +25,13 @@ STT/TTS 이력 DB(MariaDB)의 개인정보를 탐지·마스킹해 별도 테이
 - 테스트 데이터의 개인정보는 전부 가짜. 실데이터를 저장소·테스트 DB 에 넣지 않는다
 - 외부 네트워크 호출 코드·CDN 리소스 금지(폐쇄망 전제). 폰트 등은 npm 으로 번들
 - 접속 비밀번호·마스터키는 커밋 금지(`data/` 는 .gitignore)
+
+## 작업 방식
+- 진행 상황과 남은 일은 `docs/PLAN.md` 맨 아래 "현재 진행 상황" 표가 기준이다
+- 한 번에 T 항목 하나만. 코드 작성 전에 계획을 보여주고 승인받는다
+- 구현 후 `code-reviewer` 에이전트로 리뷰, 완료 기준 확인, 그다음 커밋
+- 끝나면 PLAN.md 진행 상황 표를 갱신한다
+- 탐지 규칙을 바꾸면 `masking-core` 테스트와 함께, 기존 가짜 데이터에서 탐지 건수가 의도치 않게 변하지 않았는지 확인한다
 
 ## 계획 대비 현재 상태 (1단계 동작본)
 - 배치는 Spring Batch 대신 같은 구조(keyset reader → processor → upsert writer)의 `JobRunner` 로 구현. T8 에서 Spring Batch 6 로 전환
