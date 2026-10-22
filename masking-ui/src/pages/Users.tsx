@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, ROLE_LABEL, type RoleCode, type UserView } from '../api'
 import type { Notify } from '../App'
+import { useMe } from '../auth'
 
 const ROLES: RoleCode[] = ['CONFIGURER', 'OPERATOR', 'AUDITOR', 'ADMIN']
 
@@ -16,10 +17,13 @@ const EMPTY: Form = { username: '', displayName: '', password: '', roles: ['OPER
 
 /** 사용자 관리(관리자). 삭제 대신 사용 중지 */
 export default function Users({ notify }: { notify: Notify }) {
+  const me = useMe()
   const [users, setUsers] = useState<UserView[] | null>(null)
   const [editing, setEditing] = useState<UserView | null>(null)
   const [form, setForm] = useState<Form>(EMPTY)
   const [busy, setBusy] = useState(false)
+  // 본인 관리자 계정: 관리자 역할을 빼거나 사용 중지할 수 없음(서버도 거부)
+  const selfAdmin = !!editing && editing.username === me.username && editing.roles.includes('ADMIN')
 
   const load = () => api.users().then(setUsers).catch((e: Error) => notify({ kind: 'bad', text: e.message }))
   useEffect(() => {
@@ -128,14 +132,14 @@ export default function Users({ notify }: { notify: Notify }) {
             <span className="field-label" style={{ fontWeight: 500 }}>역할</span>
             {ROLES.map((r) => (
               <label key={r} style={{ display: 'flex', gap: 8, alignItems: 'baseline', margin: '6px 0' }}>
-                <input type="checkbox" checked={form.roles.includes(r)} onChange={() => toggleRole(r)} />
+                <input type="checkbox" checked={form.roles.includes(r)} disabled={selfAdmin && r === 'ADMIN'} onChange={() => toggleRole(r)} />
                 <span><b>{ROLE_LABEL[r]}</b> <span className="muted small">{ROLE_DESC[r]}</span></span>
               </label>
             ))}
           </div>
           {editing && (
             <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14 }}>
-              <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
+              <input type="checkbox" checked={form.enabled} disabled={selfAdmin} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
               사용
             </label>
           )}

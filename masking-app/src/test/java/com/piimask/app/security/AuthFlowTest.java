@@ -25,6 +25,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -136,6 +137,26 @@ class AuthFlowTest {
         accounts.resetPassword(users.findByUsername(user).orElseThrow().id(), "third-pass-003");
         mvc.perform(get("/api/auth/me").session(a)).andExpect(status().isUnauthorized());
         login(user, "third-pass-003");
+    }
+
+    /** 관리자는 본인 계정에서 관리자 역할을 빼거나 사용 중지할 수 없다. 다른 역할 추가는 된다 */
+    @Test
+    void admin_cannot_drop_own_admin_role_or_disable_self() throws Exception {
+        accounts.create(new UserRequest("other-admin-" + UUID.randomUUID().toString().substring(0, 6), null,
+                "other-admin-pass", List.of("ADMIN"), true));
+        String admin = newUser("selfadm", "self-admin-pass", "ADMIN");
+        long id = users.findByUsername(admin).orElseThrow().id();
+        MockHttpSession s = login(admin, "self-admin-pass");
+
+        for (String body : List.of("{\"roles\":[\"AUDITOR\"],\"enabled\":true}", "{\"roles\":[\"ADMIN\"],\"enabled\":false}")) {
+            mvc.perform(put("/api/users/" + id).session(s).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("본인 계정")));
+        }
+        mvc.perform(put("/api/users/" + id).session(s).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"roles\":[\"ADMIN\",\"AUDITOR\"],\"enabled\":true}"))
+                .andExpect(status().isOk());
+        assertTrue(users.findByUsername(admin).orElseThrow().roles().contains(Role.ADMIN));
     }
 
     @Test

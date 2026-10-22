@@ -126,6 +126,11 @@ public class AccountService implements UserDetailsService {
         AppUser u = get(id);
         Set<Role> roles = requireRoles(r.roles());
         boolean enabled = r.enabled() == null ? u.enabled() : r.enabled();
+        // 본인 계정에서는 관리자 역할을 빼거나 사용 중지할 수 없다(관리자가 스스로 사라지는 일 방지)
+        if (u.username().equals(CurrentUser.name()) && u.roles().contains(Role.ADMIN)
+                && (!enabled || !roles.contains(Role.ADMIN))) {
+            throw ApiException.conflict("본인 계정에서는 관리자 역할을 빼거나 사용 중지할 수 없습니다");
+        }
         boolean losesAdmin = u.enabled() && u.roles().contains(Role.ADMIN) && (!enabled || !roles.contains(Role.ADMIN));
         if (losesAdmin && users.enabledAdmins() <= 1) {
             throw ApiException.conflict("사용 중인 관리자가 최소 한 명은 있어야 합니다");
