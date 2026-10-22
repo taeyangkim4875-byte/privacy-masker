@@ -24,6 +24,19 @@ public final class Errors {
         return type + ": " + truncate(firstLine(root.getMessage()), 200);
     }
 
+    /** 메시지 없이 예외 유형과 SQLState/코드만. 로그처럼 오래 남고 널리 퍼지는 곳에 쓴다 */
+    public static String codeOnly(Throwable e) {
+        Throwable root = e;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        String type = root.getClass().getSimpleName();
+        if (root instanceof SQLException sql) {
+            return type + " [SQLState=" + sql.getSQLState() + ", code=" + sql.getErrorCode() + "]";
+        }
+        return type;
+    }
+
     private static String firstLine(String s) {
         if (s == null) {
             return "";

@@ -62,6 +62,11 @@ public class ExecutionRepository {
     }
 
     public int failInterrupted() {
+        // Spring Batch 쪽에 STARTED 로 남은 실행도 같이 정리한다(새 실행은 매번 새 JobInstance 라 막히진 않지만 이력 정합성용)
+        for (String table : List.of("BATCH_STEP_EXECUTION", "BATCH_JOB_EXECUTION")) {
+            jdbc.update("UPDATE " + table + " SET STATUS='FAILED', EXIT_CODE='FAILED', END_TIME=CURRENT_TIMESTAMP, "
+                    + "EXIT_MESSAGE='interrupted by application restart' WHERE STATUS IN ('STARTING','STARTED','STOPPING')");
+        }
         return jdbc.update("UPDATE job_execution SET status='FAILED', ended_at=CURRENT_TIMESTAMP, "
                 + "error_message='애플리케이션 재시작으로 중단됨. 다시 실행하면 마지막 처리 지점부터 이어서 진행합니다' WHERE status='RUNNING'");
     }

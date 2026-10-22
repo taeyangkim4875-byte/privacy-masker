@@ -230,7 +230,7 @@ Spring Batch 메타 테이블(`BATCH_*`)도 같은 H2에 둔다.
 | T5 스키마 탐색 | 완료 | information_schema 기반(MariaDB 전용) |
 | T6 매핑·정책 | 완료 | 컬럼별 MASK/COPY/제외, 유형별 정책, 대상 테이블 DDL 자동 생성 |
 | T7 미리보기 | 완료 | 저장 전 미리보기, 스팬 하이라이트, 탐지 테스트 화면 |
-| T8 배치 | **부분** | Spring Batch 대신 자체 `JobRunner`: keyset 청크 → 마스킹 → `ON DUPLICATE KEY UPDATE`, 청크마다 커밋 후 워터마크 저장, 중지·재시작 가능. **남은 일: Spring Batch 6 전환(동작 동일 유지), 정수 PK 전용 바인딩** |
+| T8 배치 | 완료 | Spring Batch 6.0.5 chunk 스텝(`MaskingJobFactory`: `KeysetSourceReader` → `MaskingProcessor` → `UpsertTargetWriter`). 청크마다 대상 커밋 → 워터마크·진행 저장(Batch 메타와 같은 H2 트랜잭션). 중지는 청크 경계에서 STOPPED, 이어서 실행은 워터마크 기준(실행마다 새 JobInstance). 화면 이력·API 형식 그대로(`job_execution`). 정수 PK 숫자 바인딩. 배치 예외는 `SanitizedBatchException`(유형·SQLState 만, 원인 미첨부). 통합 테스트 9건 통과(기존 5건 무수정 + `BatchMetadataIT` 4건) |
 | T9 스케줄·실행 관리 | 완료(대체) | Quartz 대신 `ThreadPoolTaskScheduler`. 실행 이력·감사 로그 화면 |
 | T10 로그인·감사 | **부분** | 감사 로그만 있음. 로그인·역할 분리 없음(127.0.0.1 바인딩으로 대신) |
 
@@ -249,10 +249,13 @@ Spring Batch 메타 테이블(`BATCH_*`)도 같은 H2에 둔다.
 
 **검증 중 찾은 앱 쪽 후속 과제 (미수정)**
 
-- 증분 누락 가능성: 워터마크가 "읽은 최대 PK"라서, 배치 도중 커밋이 늦은 트랜잭션의 작은 id 행은 영구히 건너뛴다. 기존 행 수정도 반영되지 않는다. 대응 후보: 안전 지연(`created_at < NOW() - 간격`)까지만 읽기, 또는 anti-join 보정 실행. T8 에서 함께 결정
+- 증분 누락 가능성: 워터마크가 "읽은 최대 PK"라서, 배치 도중 커밋이 늦은 트랜잭션의 작은 id 행은 영구히 건너뛴다. 기존 행 수정도 반영되지 않는다. 대응 후보: 안전 지연(`created_at < NOW() - 간격`)까지만 읽기, 또는 anti-join 보정 실행. 미결정(T8 은 "동작 동일 유지"가 조건이라 보류)
 - `Errors.safeMessage` 가 SQL 이 아닌 예외의 메시지 앞 200자를 그대로 이력에 남긴다. 메시지에 원문을 담는 예외가 생기면 `error_message` 로 샌다. 예외 유형·코드만 남기도록 좁히고 단위 테스트 추가
 - 원천=대상 검사(`JobService.toDef`)가 대소문자를 구분한다. Windows MariaDB(`lower_case_table_names=1`)에서는 `Foo`/`foo` 가 같은 테이블이므로 `equalsIgnoreCase` 로
 - 원문 미출력 검사가 아직 덮지 않은 경로: HTTP 응답(미리보기는 설계상 원문 포함), 중지(STOPPED) 실행, 2글자 이름
+- (T8) `BATCH_*` 테이블이 실행마다 인스턴스·실행·스텝 1건씩 쌓이고 정리하지 않는다. `job_execution` 보존 정책을 정할 때 함께 정리
+- (T8) 쓰기 실패 시 Batch 가 "Retry exhausted ... not skippable" ERROR 로그를 한 줄 더 남긴다(재시도 미사용 스텝의 기본 동작, 소음)
+- (T8) 10만 건 중지·재시작 테스트 시간: 전환 전 38~40초, 전환 후 33~47초(실행마다 편차)
 
 **테스트 데이터**: `docker/mariadb/init/02-seed.sql`(`scripts/gen_seed.py` 로 생성, 전부 가짜). 테이블 `stt_call_history`(3,245), `tts_request_log`(80), `tts_ssml_log`(901, 콜봇 SSML). `CALL make_bulk(30)` 으로 약 10만 행.
 

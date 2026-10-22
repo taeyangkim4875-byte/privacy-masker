@@ -139,14 +139,14 @@ abstract class BatchItSupport {
 
         JobDef job = jobRepo.get(jobId);
         var entities = JobDef.entitiesOf(job.maskColumns().get(0));
-        List<Long> mismatched = new ArrayList<>();
+        List<String> mismatched = new ArrayList<>();
         for (Object[] row : db.pairs(src, tgt)) {
             String original = (String) row[1];
             String actual = (String) row[2];
             String expected = original == null ? null
                     : engine.mask(original, entities, job.policies(), job.hashSalt()).masked();
             if (expected == null ? actual != null : !expected.equals(actual)) {
-                mismatched.add((Long) row[0]);
+                mismatched.add((String) row[0]);
             }
         }
         assertTrue(mismatched.isEmpty(), "마스킹 결과 불일치 " + mismatched.size() + "건, 앞쪽 id: "

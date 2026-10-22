@@ -11,6 +11,14 @@ spring:
     url: "jdbc:h2:file:${piimask.data-dir}/meta;INIT=RUNSCRIPT FROM 'classpath:meta-schema.sql'"
     username: sa
     password: ""
+  batch:
+    # 작업은 화면·스케줄로만 실행(기동 시 자동 실행 안 함). 메타 테이블은 meta-schema.sql 이 만든다
+    job:
+      enabled: false
+    jdbc:
+      initialize-schema: never
+      # 실행마다 (jobId, execId) 로 고유 인스턴스를 만들므로 SERIALIZABLE 이 필요 없다. 동시 시작 시 H2 충돌 방지
+      isolation-level-for-create: read_committed
 
 piimask:
   # 메타 DB 파일과 마스터키 파일 위치

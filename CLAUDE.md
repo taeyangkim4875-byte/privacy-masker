@@ -34,7 +34,9 @@ STT/TTS 이력 DB(MariaDB)의 개인정보를 탐지·마스킹해 별도 테이
 - 탐지 규칙을 바꾸면 `masking-core` 테스트와 함께, 기존 가짜 데이터에서 탐지 건수가 의도치 않게 변하지 않았는지 확인한다
 
 ## 계획 대비 현재 상태 (1단계 동작본)
-- 배치는 Spring Batch 대신 같은 구조(keyset reader → processor → upsert writer)의 `JobRunner` 로 구현. T8 에서 Spring Batch 6 로 전환
+- 배치는 Spring Batch 6 chunk 스텝(`MaskingJobFactory`: keyset reader → processor → upsert writer). 실행마다 새 JobInstance, "이어서 실행"은 Batch 재시작이 아니라 `job_watermark` 로 한다. 화면 이력은 `job_execution`(BATCH_* 는 내부용)
+- 배치 단계(reader/processor/writer)에서 나가는 예외는 `SanitizedBatchException` 으로 감싼다(원인 미첨부). Batch 가 스택 트레이스를 로그·EXIT_MESSAGE 에 남기기 때문
+- 우리 메타 `JobRepository` 빈 이름은 `maskingJobRepository`(Batch 의 `jobRepository` 와 충돌 방지)
 - 스케줄은 Quartz 대신 Spring `ThreadPoolTaskScheduler`. 영속 스케줄이 필요해지면 4단계에서 검토
 - 로그인 없음. 대신 127.0.0.1 바인딩. T10 에서 추가
 - 규칙 기반 이름 탐지(`NameRuleDetector`)를 2단계에서 당겨 넣음(베이스라인 용도)

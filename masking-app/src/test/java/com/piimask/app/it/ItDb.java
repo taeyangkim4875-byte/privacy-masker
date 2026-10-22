@@ -129,7 +129,7 @@ final class ItDb {
         List<Object[]> out = new ArrayList<>();
         try (Connection c = connect(); Statement st = c.createStatement(); ResultSet rs = st.executeQuery(sql)) {
             while (rs.next()) {
-                out.add(new Object[]{rs.getLong(1), rs.getString(2), rs.getString(3)});
+                out.add(new Object[]{rs.getString(1), rs.getString(2), rs.getString(3)});
             }
         } catch (SQLException e) {
             throw new IllegalStateException("SQL 실패 [SQLState=" + e.getSQLState() + "]");

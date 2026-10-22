@@ -13,7 +13,7 @@ import java.sql.Types;
 import java.util.Arrays;
 import java.util.List;
 
-@Repository
+@Repository("maskingJobRepository") // Spring Batch 의 jobRepository 빈과 이름이 겹치지 않게
 public class JobRepository {
 
     private final JdbcTemplate jdbc;
