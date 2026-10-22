@@ -1,0 +1,18 @@
+# build
+.gradle/
+build/
+masking-ui/node_modules/
+masking-ui/dist/
+
+# 로컬 메타 DB와 마스터키: 절대 커밋하지 않는다
+data/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# 접속 정보가 들어갈 수 있는 로컬 설정
+*.local.yml
+.env
+masking-ui/*.tsbuildinfo

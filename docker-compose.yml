@@ -1,0 +1,29 @@
+# 로컬 테스트용 MariaDB. 가짜 STT/TTS 이력이 자동으로 들어간다.
+#   docker compose up -d        시작
+#   docker compose down -v      중지 + 데이터 초기화(다음 시작 때 시드 다시 적재)
+services:
+  mariadb:
+    image: mariadb:11.4
+    container_name: piimask-mariadb
+    environment:
+      MARIADB_ROOT_PASSWORD: root-local-only
+      MARIADB_DATABASE: stt
+      MARIADB_USER: masker
+      MARIADB_PASSWORD: masker-local
+      TZ: Asia/Seoul
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "127.0.0.1:13306:3306"
+    volumes:
+      - ./docker/mariadb/init:/docker-entrypoint-initdb.d:ro
+      - piimask-mariadb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+volumes:
+  piimask-mariadb:
