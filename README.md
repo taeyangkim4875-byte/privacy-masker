@@ -114,6 +114,31 @@ http://127.0.0.1:5173 에서 저장할 때마다 바로 반영됩니다. API는 
 ./gradlew :masking-core:test        (Windows: gradlew.bat :masking-core:test)
 ```
 
+### 배치 통합 테스트 (실제 MariaDB)
+
+`masking-app` 의 `@Tag("integration")` 테스트는 기본 `test` 에서 빠지고 `integrationTest` 로만 돕니다.
+시드 테이블(`stt_call_history`)을 `it_*` 테이블로 복사해 쓰고 끝나면 지웁니다. 시드와 `./data` 는 건드리지 않습니다.
+
+| 테스트 | 확인 내용 |
+| --- | --- |
+| `BatchCountIT` | 실행 후 대상 건수·PK 집합 = 원천, COPY 컬럼 동일, MASK 컬럼 = 엔진 재계산 결과 |
+| `BatchRestartIT` | 약 10만 건을 30% 지점에서 중지 → 재실행해도 중복·누락 없음, 워터마크를 되감아도 같은 결과 |
+| `BatchIncrementalIT` | 재실행 시 새로 들어온 행만 처리(read_count, start/end_pk, masked_at), 새 행이 없으면 0건 |
+| `NoPlaintextLeakIT` | 가짜 개인정보(카나리)와 원천에서 탐지된 원문 조각이 콘솔·로그 파일·메타 DB(덤프와 파일)에 없음. 실패 실행 포함 |
+
+접속 정보는 환경변수로만 넣습니다(저장소에 기본값 없음). 포터블 DB를 띄운 상태(`run.cmd`)에서:
+
+```powershell
+$env:PIIMASK_IT_DB_URL      = "jdbc:mariadb://127.0.0.1:13306/stt"
+$env:PIIMASK_IT_DB_USER     = "masker"
+$env:PIIMASK_IT_DB_PASSWORD = "masker-local"
+.\gradlew.bat :masking-app:integrationTest -PskipUi "-Dorg.gradle.jvmargs=-Dfile.encoding=COMPAT"
+```
+
+- 약 1분 30초 걸립니다. 결과: `masking-app/build/reports/tests/integrationTest/index.html`
+- `PIIMASK_IT_KEEP=1` 이면 끝난 뒤 `it_*` 테이블을 남겨 둡니다(실패 원인 확인용)
+- `-Dorg.gradle.jvmargs=-Dfile.encoding=COMPAT` 는 사용자 폴더가 한글(예: `C:\Users\김태양`)인 Windows 에서만 필요합니다. 없으면 테스트 JVM 이 `GradleWorkerMain` 을 못 찾고 죽습니다(엔진 테스트도 같음)
+
 ## 7. 현재 범위와 계획 대비 차이
 
 계획서 `docs/PLAN.md` 기준 1단계(T1~T9)와 2단계 일부입니다.
@@ -139,3 +164,4 @@ http://127.0.0.1:5173 에서 저장할 때마다 바로 반영됩니다. API는 
 | `복호화 실패` | `data/master.key` 가 바뀌었거나 지워짐. 접속 정보를 다시 등록 |
 | `PIIMASK_DATA_DIR` 지정 후 기동 실패 | 절대 경로나 `./` 로 시작하는 경로로 지정(H2 규칙) |
 | 화면이 안 바뀜 | `-SkipUi` 없이 다시 실행하거나 브라우저 강력 새로고침 |
+| 테스트 실행 시 `ClassNotFoundException: ...GradleWorkerMain` | 한글 사용자 폴더 문제. gradlew 에 `"-Dorg.gradle.jvmargs=-Dfile.encoding=COMPAT"` 추가 |

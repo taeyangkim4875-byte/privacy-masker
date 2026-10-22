@@ -19,6 +19,27 @@ dependencies {
 }
 
 // ---------------------------------------------------------------
+// 통합 테스트(@Tag("integration")): 실제 MariaDB 필요. 기본 test 에서는 제외
+//   PIIMASK_IT_DB_URL / PIIMASK_IT_DB_USER / PIIMASK_IT_DB_PASSWORD 설정 후
+//   ./gradlew :masking-app:integrationTest -PskipUi
+// ---------------------------------------------------------------
+tasks.named<Test>("test") {
+    useJUnitPlatform { excludeTags("integration") }
+}
+
+val integrationTest by tasks.registering(Test::class) {
+    group = "verification"
+    description = "실제 MariaDB 대상 배치 통합 테스트"
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform { includeTags("integration") }
+    shouldRunAfter(tasks.named("test"))
+    outputs.upToDateWhen { false }
+    // 메타 DB·마스터키·로그를 매번 새로 만든다
+    doFirst { delete(layout.buildDirectory.dir("it-data")) }
+}
+
+// ---------------------------------------------------------------
 // React 화면 빌드를 jar 안(static/)에 포함
 //   ./gradlew bootRun -PskipUi  → 화면 빌드 생략(백엔드만 빠르게 재기동할 때)
 // ---------------------------------------------------------------

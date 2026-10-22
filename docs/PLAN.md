@@ -213,3 +213,47 @@ Spring Batch 메타 테이블(`BATCH_*`)도 같은 H2에 둔다.
 - [ ] STT 출력의 숫자 역정규화 여부
 - [ ] 마스킹 대상 엔티티 목록과 정책을 고객사 보안 담당과 확정
 - [ ] 마스킹 결과 테이블을 같은 DB에 둘지 별도 DB에 둘지
+
+---
+
+## 현재 진행 상황 (2026-10-22 기준, 이 섹션이 위 체크리스트보다 우선)
+
+로컬 동작본(v0.1.0)이 있다. `run.cmd`(Windows) / `run.sh`로 포터블 MariaDB + 가짜 데이터 + 앱이 뜬다.
+
+| 항목 | 상태 | 실제 구현 |
+| --- | --- | --- |
+| T1 골격 | 완료 | Gradle 9.1 Kotlin DSL 멀티모듈, Spring Boot 4.1.1, Java 25 실행(컴파일 타깃 21), React+Vite 빌드를 `processResources` 로 static 에 포함, H2 메타 DB(`meta-schema.sql`) |
+| T2 엔진 코어 | 완료 | `masking-core`: `Detector`, `Span`, `SpanMerger`(합집합·우선순위), `Masker`(TAG/FULL/PARTIAL/HASH) |
+| T3 정규식+검증기 | 완료 | 휴대폰·유선·SSML say-as 전화, 카드(Luhn), 주민·외국인(날짜·성별), 계좌(하이픈/문맥), 이메일 |
+| (2단계 일부) 규칙 이름 | 완료 | `NameRuleDetector`: 호칭·단서, SSML 단독 노드, 끊어 읽기(고,영,환), 로마자 이름 |
+| T4 접속 관리 | 완료 | AES-256-GCM 비밀번호 암호화, 접속별 Hikari 풀 |
+| T5 스키마 탐색 | 완료 | information_schema 기반(MariaDB 전용) |
+| T6 매핑·정책 | 완료 | 컬럼별 MASK/COPY/제외, 유형별 정책, 대상 테이블 DDL 자동 생성 |
+| T7 미리보기 | 완료 | 저장 전 미리보기, 스팬 하이라이트, 탐지 테스트 화면 |
+| T8 배치 | **부분** | Spring Batch 대신 자체 `JobRunner`: keyset 청크 → 마스킹 → `ON DUPLICATE KEY UPDATE`, 청크마다 커밋 후 워터마크 저장, 중지·재시작 가능. **남은 일: Spring Batch 6 전환(동작 동일 유지), 정수 PK 전용 바인딩** |
+| T9 스케줄·실행 관리 | 완료(대체) | Quartz 대신 `ThreadPoolTaskScheduler`. 실행 이력·감사 로그 화면 |
+| T10 로그인·감사 | **부분** | 감사 로그만 있음. 로그인·역할 분리 없음(127.0.0.1 바인딩으로 대신) |
+
+**1단계 완료 기준 검증 (2026-10-22, 포터블 MariaDB 11.4 대상 `integrationTest` 5건 통과)**
+
+| 완료 기준 | 상태 | 근거 |
+| --- | --- | --- |
+| 실행 결과 테이블 확인 | 통과 | `BatchCountIT`: 건수·PK 집합 동일, COPY 컬럼 동일, MASK 컬럼 = 엔진 재계산 결과(전 행) |
+| 10만 건 중지·재시작 무결성 | 통과 | `BatchRestartIT`: 약 10만 건(시드 3,245건 × 31, id 중간 구멍·NULL 행 포함), 30% 지점 중지 → 재실행, read_count 합 = 원천 건수. 워터마크 되감기(커밋 후 저장 전 중단 모사)도 멱등 |
+| 증분 재실행 | 통과 | `BatchIncrementalIT`: 새 250건만 처리(start/end_pk, masked_at), 새 행 없으면 0건 |
+| 로그·이력 원문 미출력 | 통과 | `NoPlaintextLeakIT`: 카나리 + 탐지된 원문 조각을 콘솔·로그 파일·메타 DB 덤프·메타 DB 파일에서 검색, 실패 실행 포함. 일부러 흘린 값은 네 곳 모두에서 잡힘을 확인 |
+| 개발 서버 MariaDB 연동 | 미검증 | 같은 테스트를 `PIIMASK_IT_DB_*` 만 바꿔 실행하면 됨 |
+| Linux 실행 | 미검증 | |
+
+실행 방법은 README "배치 통합 테스트". 위 결과는 배치 도중 원천에 쓰기가 없는 상태 기준이다.
+
+**검증 중 찾은 앱 쪽 후속 과제 (미수정)**
+
+- 증분 누락 가능성: 워터마크가 "읽은 최대 PK"라서, 배치 도중 커밋이 늦은 트랜잭션의 작은 id 행은 영구히 건너뛴다. 기존 행 수정도 반영되지 않는다. 대응 후보: 안전 지연(`created_at < NOW() - 간격`)까지만 읽기, 또는 anti-join 보정 실행. T8 에서 함께 결정
+- `Errors.safeMessage` 가 SQL 이 아닌 예외의 메시지 앞 200자를 그대로 이력에 남긴다. 메시지에 원문을 담는 예외가 생기면 `error_message` 로 샌다. 예외 유형·코드만 남기도록 좁히고 단위 테스트 추가
+- 원천=대상 검사(`JobService.toDef`)가 대소문자를 구분한다. Windows MariaDB(`lower_case_table_names=1`)에서는 `Foo`/`foo` 가 같은 테이블이므로 `equalsIgnoreCase` 로
+- 원문 미출력 검사가 아직 덮지 않은 경로: HTTP 응답(미리보기는 설계상 원문 포함), 중지(STOPPED) 실행, 2글자 이름
+
+**테스트 데이터**: `docker/mariadb/init/02-seed.sql`(`scripts/gen_seed.py` 로 생성, 전부 가짜). 테이블 `stt_call_history`(3,245), `tts_request_log`(80), `tts_ssml_log`(901, 콜봇 SSML). `CALL make_bulk(30)` 으로 약 10만 행.
+
+**알려진 미탐(의도적으로 남김)**: 한글로 읽은 숫자("공일공 사팔이일…") → 2단계 ITN, 문장 중간에 단서 없이 나온 이름 → 3단계 모델.
