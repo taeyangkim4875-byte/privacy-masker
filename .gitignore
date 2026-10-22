@@ -16,3 +16,6 @@ data/
 *.local.yml
 .env
 masking-ui/*.tsbuildinfo
+
+# portable MariaDB binaries and data (run.cmd)
+.local/

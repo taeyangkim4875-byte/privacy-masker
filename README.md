@@ -10,7 +10,7 @@ STT·TTS 이력 테이블에서 이름·전화번호·카드번호·주민등록
 | --- | --- | --- |
 | JDK | 21 이상 (계획 기준 25 권장) | `java -version` |
 | Node.js | 22 LTS (20.19 이상) | `node -v` |
-| Docker Desktop | 최신 | `docker version` |
+| Docker Desktop | 선택 사항 | 없으면 포터블 MariaDB를 자동으로 사용 |
 
 처음 실행할 때 Gradle·라이브러리·npm 패키지를 내려받으므로 인터넷이 필요합니다. 두 번째부터는 캐시를 씁니다.
 
@@ -31,7 +31,9 @@ Linux / macOS:
 스크립트가 하는 일:
 
 1. Java·Node·Docker 확인
-2. Docker로 MariaDB 시작 (`127.0.0.1:13306`, 가짜 상담 이력 3,245행 자동 적재)
+2. MariaDB 시작 (`127.0.0.1:13306`, 가짜 상담 이력 3,245행 자동 적재)
+   - Docker Desktop이 켜져 있으면 Docker로 띄웁니다
+   - 없으면 **포터블 MariaDB**를 씁니다: 처음 한 번 공식 zip(약 80MB)을 받아 SHA-256을 검증하고 프로젝트의 `.local/` 폴더에 풉니다. 설치·관리자 권한이 필요 없고, `run.cmd`를 끄면 DB도 같이 꺼집니다
 3. React 화면 빌드 → Spring Boot 실행
 
 `Started PiiMaskApplication` 이 보이면 브라우저에서 **http://127.0.0.1:8080** 을 엽니다.
@@ -39,6 +41,8 @@ Linux / macOS:
 | 옵션 | Windows | Linux/macOS | 용도 |
 | --- | --- | --- | --- |
 | Docker 없이 | `run.cmd -NoDb` | `./run.sh --no-db` | 개발 서버 MariaDB 등 직접 접속 |
+| 포터블 DB 강제 | `run.cmd -Portable` | - | Docker가 있어도 포터블 사용 |
+| 가짜 데이터 초기화 | `run.cmd -ResetDb` | - | 포터블 DB를 지우고 시드 다시 적재 |
 | 화면 빌드 생략 | `run.cmd -SkipUi` | `./run.sh --skip-ui` | 백엔드만 다시 띄울 때 |
 | 포트 변경 | `set PIIMASK_PORT=9090` | `PIIMASK_PORT=9090 ./run.sh` | 8080 이 사용 중일 때 |
 
@@ -128,7 +132,9 @@ http://127.0.0.1:5173 에서 저장할 때마다 바로 반영됩니다. API는 
 | --- | --- |
 | `Port 8080 was already in use` | `PIIMASK_PORT` 로 다른 포트 지정 |
 | 13306 포트 충돌 | `docker-compose.yml` 의 `13306` 을 바꾸고 접속 정보도 같이 변경 |
-| 시드 데이터를 처음 상태로 | `docker compose down -v` 후 다시 실행 |
+| 시드 데이터를 처음 상태로 | 포터블: `run.cmd -ResetDb` / Docker: `docker compose down -v` 후 다시 실행 |
+| 포터블 DB 초기화 실패(한글 경로) | `set PIIMASK_DB_HOME=C:\piimask-local` 후 실행 |
+| 포터블 DB를 완전히 지우기 | 앱 종료 후 `.local` 폴더 삭제 |
 | 메타 설정(접속·작업)을 초기화 | 앱 종료 후 `data/` 폴더 삭제 |
 | `복호화 실패` | `data/master.key` 가 바뀌었거나 지워짐. 접속 정보를 다시 등록 |
 | `PIIMASK_DATA_DIR` 지정 후 기동 실패 | 절대 경로나 `./` 로 시작하는 경로로 지정(H2 규칙) |
