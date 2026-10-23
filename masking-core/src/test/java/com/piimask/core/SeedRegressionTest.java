@@ -189,6 +189,96 @@ class SeedRegressionTest {
         assertTrue(falsePositive.isEmpty(), "오탐: " + falsePositive);
     }
 
+    /** gen_seed.py 의 가짜 이름 문법(SURNAMES + GIVEN 1~2음절). 이 형태가 예외 사전으로 지워지면 진짜 이름을 지운 것 */
+    private static final String SEED_SURNAMES = "김이박최정강조윤장임한오서신권황안송류전홍고문양손배백허남심노하곽성차주우구";
+    private static final String SEED_GIVEN = "민서준우하윤지호예은도현수아태양시연하늘유진건희주원채린서영재민가온다인소율";
+    private static final Pattern SEED_NAME = Pattern.compile(
+            "(?:남궁|황보|제갈|[" + SEED_SURNAMES + "])[" + SEED_GIVEN + "]{1,2}");
+
+    /** 사전 도입 전 STOPWORDS 에 있던 말 중 시드 이름 형태인 것(그때부터 이름으로 보지 않았음) */
+    private static final Set<String> LEGACY_NAME_SHAPED = Set.of("한도", "오늘", "주소", "정도", "최소", "임시");
+
+    /** 새로 넣는 예외어가 이름 형태면, 그 이름을 가진 사람이 지워진다("이율", "고지서") */
+    @Test
+    void built_in_exceptions_are_not_name_shaped() {
+        List<String> shaped = com.piimask.core.dict.NameDictionary.builtIn().exceptions().stream()
+                .filter(t -> SEED_NAME.matcher(t).matches() && !LEGACY_NAME_SHAPED.contains(t)).sorted().toList();
+        assertTrue(shaped.isEmpty(), "이름일 수 있는 예외어 " + shaped.size() + "개");
+    }
+
+    /** 기본 예외 사전 켬/끔: 이름 아닌 유형은 그대로, 이름은 줄기만 하고, 지워진 것 중 시드 이름 형태는 없어야 한다 */
+    @Test
+    void exception_dictionary_only_removes_non_names() throws IOException {
+        MaskingEngine on = MaskingEngine.withDefaults();
+        MaskingEngine off = on.withDictionary(com.piimask.core.dict.NameDictionary.builtIn().withoutExceptions());
+        Set<EntityType> others = java.util.EnumSet.complementOf(java.util.EnumSet.of(EntityType.NAME));
+        List<String> problems = new ArrayList<>();
+        int[] name = new int[2]; // [끔, 켬]
+        int removed = 0;
+        int dictRows = 0;
+        int dictFalsePositiveOff = 0;
+        int dictNames = 0;
+        int legacyNames = 0;
+        Pattern cued = Pattern.compile("(?<![가-힣])(" + SEED_NAME.pattern() + ")(?=입니다|이요| 고객님)");
+        for (Row r : seedRows()) {
+            String t = r.text();
+            String where = r.table() + "#" + r.no();
+            if (!on.detect(t, others).equals(off.detect(t, others))) {
+                problems.add(where + ": 이름 아닌 유형의 결과가 바뀜");
+            }
+            List<Span> a = off.detect(t, Set.of(EntityType.NAME));
+            List<Span> b = on.detect(t, Set.of(EntityType.NAME));
+            name[0] += a.size();
+            name[1] += b.size();
+            if (!r.key().startsWith("C20261022-")) {
+                legacyNames += (int) on.detect(t).stream().filter(s -> s.type() == EntityType.NAME).count();
+            }
+            for (Span s : b) {
+                if (!a.contains(s)) {
+                    problems.add(where + ": 예외 사전을 켰더니 새 이름 스팬이 생김");
+                }
+            }
+            for (Span s : a) {
+                if (!b.contains(s)) {
+                    removed++;
+                    if (SEED_NAME.matcher(t.substring(s.start(), s.end())).matches()) {
+                        problems.add(where + ": 시드 이름 형태가 예외 사전으로 지워짐");
+                    }
+                }
+            }
+            if (r.key().startsWith("C20261022-")) {
+                dictRows++;
+                for (Span s : a) {
+                    if (!SEED_NAME.matcher(t.substring(s.start(), s.end())).matches()) {
+                        dictFalsePositiveOff++;
+                    }
+                }
+                for (Span s : b) {
+                    if (!SEED_NAME.matcher(t.substring(s.start(), s.end())).matches()) {
+                        problems.add(where + ": 예외 사전 검증 통화에 이름 오탐이 남음");
+                    }
+                }
+                Matcher m = cued.matcher(t);
+                while (m.find()) {
+                    dictNames++;
+                    int st = m.start(1);
+                    int en = m.end(1);
+                    if (b.stream().noneMatch(s -> s.start() <= st && en <= s.end())) {
+                        problems.add(where + ": 예외 사전 검증 통화의 이름을 놓침");
+                    }
+                }
+            }
+        }
+        System.out.println("예외 사전 끔 → 켬: 이름 " + name[0] + "→" + name[1] + " (지워진 스팬 " + removed + ")"
+                + " / 검증 통화 " + dictRows + "행: 사전 없을 때 오탐 " + dictFalsePositiveOff + "건, 이름 " + dictNames + "건");
+        assertTrue(problems.isEmpty(), String.join("\n", problems));
+        // 사전 도입 전 시드 행의 이름 건수(1262)에서 "오일입니다" 오탐 2건만 빠진 값. 사전·규칙을 바꾸면 이 값을 확인하고 고친다
+        assertEquals(1260, legacyNames, "사전 도입 전 시드 행의 이름 건수");
+        assertTrue(dictRows >= 200, "검증 통화 행 수: " + dictRows);
+        assertTrue(dictFalsePositiveOff >= 60, "검증 통화가 오탐을 유도해야 함: " + dictFalsePositiveOff);
+        assertTrue(dictNames >= 60, "검증 통화의 이름 수: " + dictNames);
+    }
+
     /**
      * 9자리 이상 숫자 덩어리(숫자·공백·"에")에 든 글자인지.
      * 덩어리의 마지막 숫자가 "이" 면 조사("…이요", "…이에요")일 수 있으므로 검사에서 뺀다.

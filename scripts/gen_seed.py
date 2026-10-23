@@ -162,6 +162,41 @@ def itn_call(r):
     return u
 
 
+BRANCHES = ["강남", "서초", "송파", "노원", "구로", "마포", "신촌", "홍대", "명동", "성수", "강서", "부평"]
+# 이름 규칙("성씨 + 1~2음절 + 입니다/이요/고객님")에 걸리는 상품·멘트 말. 기본 예외 사전에 있어야 한다
+DICT_TERMS = ["명세서", "선결제", "공과금", "구독료", "위약금", "연체료", "연회비", "원금", "현금", "금액", "이자",
+              "안내문", "신분증", "여권", "제품", "서류", "손님", "오류", "문제", "장애"]
+
+
+def full_name(r):
+    """세 글자 이상 이름(예외어와 겹치지 않게)"""
+    return r.choice(SURNAMES) + "".join(r.choice(GIVEN) for _ in range(2))
+
+
+def dict_call(r):
+    """예외 사전 검증용 통화: 이름처럼 보이는 지점명·직함·상품 용어(오탐 유도)와 진짜(가짜) 이름"""
+    agent, cust = full_name(r), full_name(r)
+    branch = r.choice(BRANCHES)
+    u = [("AGENT", f"안녕하세요 {branch}점 고객님, 상담원 {agent}입니다."),
+         ("CUSTOMER", f"{r.choice(INTENTS)} 때문에 전화드렸어요."),
+         ("AGENT", "본인 확인을 위해 성함 말씀해 주시겠어요?"),
+         ("CUSTOMER", f"{cust}입니다."),
+         ("AGENT", f"{cust} 고객님 확인 감사합니다.")]
+    for term in r.sample(DICT_TERMS, 3):
+        u.append((r.choice(["AGENT", "CUSTOMER"]), r.choice([
+            f"말씀하신 건 {term}입니다.",
+            f"네 {term}이요.",
+            f"그건 {term}이고요, 다음 달에 다시 안내드릴게요.",
+        ])))
+    u.append(("AGENT", r.choice([
+        f"{branch}점 지점장님께 {cust} 고객님 건 전달드리겠습니다.",
+        f"{cust} 고객님 이번 달 명세서입니다.",
+        f"예금주 {cust}이요, 확인했습니다.",
+    ])))
+    u.append(("CUSTOMER", "네 감사합니다."))
+    return u
+
+
 ROMAN_SURNAME = {"김": "KIM", "이": "LEE", "박": "PARK", "최": "CHOI", "정": "JUNG", "강": "KANG", "조": "CHO",
                  "윤": "YOON", "장": "JANG", "임": "LIM", "한": "HAN", "오": "OH", "서": "SEO", "신": "SHIN",
                  "권": "KWON", "황": "HWANG", "안": "AHN", "송": "SONG", "홍": "HONG", "고": "KO", "문": "MOON"}
@@ -218,6 +253,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--calls", type=int, default=300)
     ap.add_argument("--itn-calls", type=int, default=40, help="한글로 읽은 숫자 검증용 통화 수(기존 행과 별도 난수)")
+    ap.add_argument("--dict-calls", type=int, default=30, help="예외 사전 검증용 통화 수(기존 행과 별도 난수)")
     ap.add_argument("--seed", type=int, default=20261022)
     ap.add_argument("--out", default=str(Path(__file__).resolve().parent.parent / "docker/mariadb/init/02-seed.sql"))
     a = ap.parse_args()
@@ -262,6 +298,18 @@ def main():
     if itn_rows:
         lines.append("INSERT INTO stt_call_history (call_id, seq, speaker, utterance, created_at) VALUES")
         lines.append(",\n".join(f"({sql_str(c)}, {s}, {sql_str(sp)}, {sql_str(tx)}, {sql_str(ts)})" for c, s, sp, tx, ts in itn_rows) + ";")
+    # 예외 사전 검증 통화: 마찬가지로 별도 난수, 뒤에 붙인다
+    r_dict = random.Random(a.seed + 11)
+    dict_rows = []
+    t4 = datetime(2026, 10, 22, 9, 0, 0)
+    for i in range(a.dict_calls):
+        call_id = f"C20261022-{a.calls + a.itn_calls + i:05d}"
+        t4 += timedelta(minutes=r_dict.randint(1, 40))
+        for j, (spk, text) in enumerate(dict_call(r_dict)):
+            dict_rows.append((call_id, j + 1, spk, text, (t4 + timedelta(seconds=j * 9)).strftime("%Y-%m-%d %H:%M:%S")))
+    if dict_rows:
+        lines.append("INSERT INTO stt_call_history (call_id, seq, speaker, utterance, created_at) VALUES")
+        lines.append(",\n".join(f"({sql_str(c)}, {s}, {sql_str(sp)}, {sql_str(tx)}, {sql_str(ts)})" for c, s, sp, tx, ts in dict_rows) + ";")
     lines.append("INSERT INTO tts_request_log (request_text, channel, requested_at) VALUES")
     lines.append(",\n".join(f"({sql_str(tx)}, {sql_str(ch)}, {sql_str(ts)})" for tx, ch, ts in tts) + ";")
     t2 = datetime(2026, 10, 20, 9, 0, 0)
@@ -274,7 +322,7 @@ def main():
             vals.append(f"({sql_str(c)}, {sql_str(sc)}, {sql_str(x)}, {sql_str(ts)})")
         lines.append(",\n".join(vals) + ";")
     Path(a.out).write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"wrote {len(rows)} + {len(itn_rows)} (ITN) utterances / {a.calls} + {a.itn_calls} calls, {len(tts)} tts rows, {len(ssml)} ssml rows -> {a.out}")
+    print(f"wrote {len(rows)} + {len(itn_rows)} (ITN) + {len(dict_rows)} (dict) utterances / {a.calls} + {a.itn_calls} + {a.dict_calls} calls, {len(tts)} tts rows, {len(ssml)} ssml rows -> {a.out}")
 
 
 if __name__ == "__main__":

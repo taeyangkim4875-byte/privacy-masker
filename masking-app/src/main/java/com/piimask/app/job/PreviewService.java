@@ -10,6 +10,7 @@ import com.piimask.app.job.JobDtos.SpanView;
 import com.piimask.app.support.ApiException;
 import com.piimask.app.support.Errors;
 import com.piimask.app.support.Sql;
+import com.piimask.app.dict.EngineProvider;
 import com.piimask.core.MaskingEngine;
 import com.piimask.core.Span;
 import org.springframework.stereotype.Service;
@@ -32,12 +33,12 @@ public class PreviewService {
 
     private final ConnectionService connections;
     private final DataSourceRegistry registry;
-    private final MaskingEngine engine;
+    private final EngineProvider engines;
 
-    public PreviewService(ConnectionService connections, DataSourceRegistry registry, MaskingEngine engine) {
+    public PreviewService(ConnectionService connections, DataSourceRegistry registry, EngineProvider engines) {
         this.connections = connections;
         this.registry = registry;
-        this.engine = engine;
+        this.engines = engines;
     }
 
     public PreviewResult preview(JobDef job, int limit) {
@@ -46,6 +47,7 @@ public class PreviewService {
         List<String> names = maskCols.stream().map(ColumnSpec::column).toList();
         String sql = "SELECT " + Sql.q(job.pkColumn()) + ", " + Sql.qList(names)
                 + " FROM " + Sql.q(job.sourceTable()) + " ORDER BY " + Sql.q(job.pkColumn()) + " LIMIT ?";
+        MaskingEngine engine = engines.current();
         long t0 = System.currentTimeMillis();
         Map<String, Integer> counts = new TreeMap<>();
         List<PreviewRow> rows = new ArrayList<>();

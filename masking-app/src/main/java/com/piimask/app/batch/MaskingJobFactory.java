@@ -6,7 +6,7 @@ import com.piimask.app.job.JobDef;
 import com.piimask.app.job.JobDtos.ColumnSpec;
 import com.piimask.app.job.JobRepository;
 import com.piimask.core.EntityType;
-import com.piimask.core.MaskingEngine;
+import com.piimask.app.dict.EngineProvider;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.step.Step;
@@ -32,18 +32,18 @@ class MaskingJobFactory {
     private final PlatformTransactionManager metaTx;
     private final JobRepository jobs;
     private final ExecutionRepository executions;
-    private final MaskingEngine engine;
+    private final EngineProvider engines;
 
     MaskingJobFactory(org.springframework.batch.core.repository.JobRepository batchRepository,
                       // 메타 DB(H2) 트랜잭션 매니저. 나중에 다른 매니저가 생겨도 이것에 묶이도록 이름으로 받는다
                       @Qualifier("transactionManager") PlatformTransactionManager metaTx,
                       JobRepository jobs, ExecutionRepository executions,
-                      MaskingEngine engine) {
+                      EngineProvider engines) {
         this.batchRepository = batchRepository;
         this.metaTx = metaTx;
         this.jobs = jobs;
         this.executions = executions;
-        this.engine = engine;
+        this.engines = engines;
     }
 
     static String jobName(long jobId) {
@@ -64,7 +64,8 @@ class MaskingJobFactory {
 
         KeysetSourceReader reader = new KeysetSourceReader(source, job.sourceTable(), job.pkColumn(), cols,
                 firstMaskIndex, integerPk, job.chunkSize(), state.watermark);
-        MaskingProcessor processor = new MaskingProcessor(engine, copyCols.size(), maskEntities,
+        // 실행을 만들 때의 엔진(사용자 사전 포함)을 끝까지 쓴다. 도중에 사전이 바뀌어도 한 실행 안의 결과는 섞이지 않는다
+        MaskingProcessor processor = new MaskingProcessor(engines.current(), copyCols.size(), maskEntities,
                 job.policies(), job.hashSalt());
         UpsertTargetWriter writer = new UpsertTargetWriter(source, job.targetTable(), cols, state);
         ProgressListener progress = new ProgressListener(state, jobs, executions);

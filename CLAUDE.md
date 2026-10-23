@@ -4,7 +4,7 @@ STT/TTS 이력 DB(MariaDB)의 개인정보를 탐지·마스킹해 별도 테이
 전체 계획·단계·완료 기준은 `docs/PLAN.md` 를 따른다. 작업은 PLAN 의 T 항목 하나씩, 계획 승인 후 구현한다.
 
 ## 구조
-- `masking-core/`  탐지·병합·치환 엔진. 순수 Java, Spring·DB 의존성 금지. `normalize/` 는 ITN(한글로 읽은 숫자 → 숫자열, 원문 오프셋 유지)
+- `masking-core/`  탐지·병합·치환 엔진. 순수 Java, Spring·DB 의존성 금지. `normalize/` 는 ITN(한글로 읽은 숫자 → 숫자열, 원문 오프셋 유지), `dict/` 는 이름 사전(기본 성씨·예외어는 리소스 파일 `com/piimask/core/dict/*.txt`)
   - 탐지 규칙을 바꾸면 `SeedRegressionTest`(시드 전체 ITN 끔/켬 비교, 유형별 건수 출력)가 함께 돈다
 - `masking-app/`   Spring Boot 4.1: 접속·작업 설정 API, 증분 배치, 스케줄, H2 메타 DB
 - `masking-ui/`    React + Vite. 빌드 결과는 Gradle 이 app 의 static/ 에 넣는다
@@ -43,3 +43,6 @@ STT/TTS 이력 DB(MariaDB)의 개인정보를 탐지·마스킹해 별도 테이
 - 원문이 보이는 기능(미리보기·탐지 테스트)은 설정자 전용. 감사 로그 actor 는 `CurrentUser`(요청 밖은 system / system:scheduler)
 - 127.0.0.1 바인딩은 유지(HTTPS·외부 공개는 4단계)
 - 규칙 기반 이름 탐지(`NameRuleDetector`)를 2단계에서 당겨 넣음(베이스라인 용도)
+- 엔진은 `dict/EngineProvider.current()` 로 받는다(사용자 사전 반영, 사전이 바뀌면 새 엔진으로 교체). 배치는 실행을 만들 때 한 번 받는다. `MaskingEngine` 빈은 기본 사전만 쓰는 엔진(사용자 사전 미반영)
+- 사전 단어(특히 추가 탐지어)는 실명일 수 있다: 로그·감사·오류 메시지·`/api/meta` 에 단어를 넣지 않는다(종류·건수·id 만)
+- 기본 예외 사전에 이름일 수 있는 말을 넣지 않는다(`SeedRegressionTest` 가 시드 이름 형태의 예외어를 막는다)

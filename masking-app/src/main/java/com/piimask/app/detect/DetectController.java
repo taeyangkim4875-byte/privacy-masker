@@ -1,5 +1,6 @@
 package com.piimask.app.detect;
 
+import com.piimask.app.dict.EngineProvider;
 import com.piimask.app.job.JobDef;
 import com.piimask.app.job.JobDtos.SpanView;
 import com.piimask.app.job.PreviewService;
@@ -7,6 +8,7 @@ import com.piimask.app.support.ApiException;
 import com.piimask.core.EntityType;
 import com.piimask.core.MaskingEngine;
 import com.piimask.core.detect.Detector;
+import com.piimask.core.detect.DictionaryNameDetector;
 import com.piimask.core.detect.RegexDetector;
 import com.piimask.core.mask.MaskingPolicy;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,10 +34,10 @@ public class DetectController {
     public record DetectResponse(String masked, List<SpanView> spans, long elapsedMicros) {
     }
 
-    private final MaskingEngine engine;
+    private final EngineProvider engines;
 
-    public DetectController(MaskingEngine engine) {
-        this.engine = engine;
+    public DetectController(EngineProvider engines) {
+        this.engines = engines;
     }
 
     /** 탐지 테스트: 텍스트를 붙여넣어 결과 확인. 저장·로그하지 않는다 */
@@ -66,7 +68,7 @@ public class DetectController {
             throw ApiException.badRequest("마스킹 정책 값이 올바르지 않습니다");
         }
         long t0 = System.nanoTime();
-        MaskingEngine.Result res = engine.mask(r.text(), enabled, policies, "detect-test");
+        MaskingEngine.Result res = engines.current().mask(r.text(), enabled, policies, "detect-test");
         long micros = (System.nanoTime() - t0) / 1000;
         return new DetectResponse(res.masked(), PreviewService.toViews(res.spans()), micros);
     }
@@ -83,12 +85,15 @@ public class DetectController {
             policies.add(Map.of("code", p.name(), "label", p.label()));
         }
         List<Map<String, Object>> detectors = new ArrayList<>();
-        for (Detector d : engine.detectors()) {
+        for (Detector d : engines.current().detectors()) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("name", d.name());
             m.put("type", d.type().name());
             m.put("kind", d instanceof RegexDetector ? "정규식" : "규칙");
-            m.put("pattern", d instanceof RegexDetector rd ? rd.regex() : "성씨 + 문맥 단서(성함/고객님/입니다 등)");
+            // 사전 단어는 실명일 수 있으므로 건수만 보여준다(이 API 는 모든 역할이 본다)
+            m.put("pattern", d instanceof RegexDetector rd ? rd.regex()
+                    : d instanceof DictionaryNameDetector dd ? "사용자 추가 탐지어 " + dd.size() + "개(문맥 없이 일치)"
+                    : "성씨 + 문맥 단서(성함/고객님/입니다 등), 예외 사전 적용");
             detectors.add(m);
         }
         Map<String, Object> out = new LinkedHashMap<>();

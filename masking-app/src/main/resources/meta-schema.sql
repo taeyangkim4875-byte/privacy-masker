@@ -164,3 +164,13 @@ CREATE TABLE IF NOT EXISTS app_user (
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 사용자 이름 사전(2단계). EXCEPT: 이름 아님(예외어), FORCE: 문맥 없이도 이름(추가 탐지어, 실명일 수 있음 → 설정자만 조회, 로그·감사에 단어 미기록)
+CREATE TABLE IF NOT EXISTS name_dictionary (
+    id         BIGINT AUTO_INCREMENT PRIMARY KEY,
+    kind       VARCHAR(10)  NOT NULL,
+    term       VARCHAR(50)  NOT NULL,
+    created_by VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_name_dictionary UNIQUE (kind, term)
+);

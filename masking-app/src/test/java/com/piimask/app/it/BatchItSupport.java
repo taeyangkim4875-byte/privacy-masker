@@ -5,6 +5,7 @@ import com.piimask.app.batch.ExecutionView;
 import com.piimask.app.batch.JobRunner;
 import com.piimask.app.connection.ConnectionDtos.ConnectionRequest;
 import com.piimask.app.connection.ConnectionService;
+import com.piimask.app.dict.EngineProvider;
 import com.piimask.app.job.JobDef;
 import com.piimask.app.job.JobDtos.ColumnSpec;
 import com.piimask.app.job.JobDtos.JobRequest;
@@ -46,8 +47,13 @@ abstract class BatchItSupport {
     JobRunner runner;
     @Autowired
     ExecutionRepository executions;
-    @Autowired
+    /** 배치와 같은 엔진(사용자 사전 반영). IT 동안 사전은 바뀌지 않는다 */
     MaskingEngine engine;
+
+    @Autowired
+    void engines(EngineProvider engines) {
+        this.engine = engines.current();
+    }
 
     private static String seedSum;
 

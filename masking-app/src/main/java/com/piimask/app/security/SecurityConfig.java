@@ -66,6 +66,8 @@ public class SecurityConfig {
                                 "/api/jobs/*/preview", "/api/jobs/*/reset-watermark", "/api/detect").hasRole(CONFIGURER)
                         .requestMatchers(HttpMethod.PUT, "/api/jobs/*").hasRole(CONFIGURER)
                         .requestMatchers(HttpMethod.DELETE, "/api/jobs/*").hasRole(CONFIGURER)
+                        // 이름 사전(추가 탐지어는 실명일 수 있어 조회도 설정자만)
+                        .requestMatchers("/api/dictionary", "/api/dictionary/**").hasRole(CONFIGURER)
                         // 감사·계정
                         .requestMatchers(HttpMethod.GET, "/api/audit").hasAnyRole(AUDITOR, ADMIN)
                         .requestMatchers("/api/users", "/api/users/**").hasRole(ADMIN)

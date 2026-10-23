@@ -150,6 +150,21 @@ export interface AuditEntry {
   createdAt: string
 }
 
+export type DictKind = 'EXCEPT' | 'FORCE'
+
+export interface DictEntry {
+  id: number
+  kind: DictKind
+  term: string
+  createdBy: string
+  createdAt: string
+}
+
+export interface DictionaryView {
+  builtIn: { surnames: number; exceptions: number }
+  entries: DictEntry[]
+}
+
 export type RoleCode = 'ADMIN' | 'CONFIGURER' | 'OPERATOR' | 'AUDITOR'
 
 export const ROLE_LABEL: Record<RoleCode, string> = {
@@ -269,6 +284,11 @@ export const api = {
   runJob: (id: number) => call<{ executionId: number }>('POST', `/api/jobs/${id}/run`),
   stopJob: (id: number) => call<{ stopping: boolean }>('POST', `/api/jobs/${id}/stop`),
   resetWatermark: (id: number) => call<void>('POST', `/api/jobs/${id}/reset-watermark`),
+
+  dictionary: () => call<DictionaryView>('GET', '/api/dictionary'),
+  addDictionary: (kind: DictKind, terms: string[]) =>
+    call<{ added: number; skipped: number }>('POST', '/api/dictionary', { kind, terms }),
+  deleteDictionary: (id: number) => call<void>('DELETE', `/api/dictionary/${id}`),
 
   detect: (text: string, entities: EntityCode[], policies: Record<string, PolicyCode>) =>
     call<{ masked: string; spans: SpanView[]; elapsedMicros: number }>('POST', '/api/detect', { text, entities, policies }),

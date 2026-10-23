@@ -2,6 +2,9 @@ package com.piimask.core;
 
 import com.piimask.core.detect.DefaultDetectors;
 import com.piimask.core.detect.Detector;
+import com.piimask.core.detect.DictionaryNameDetector;
+import com.piimask.core.detect.NameRuleDetector;
+import com.piimask.core.dict.NameDictionary;
 import com.piimask.core.mask.Masker;
 import com.piimask.core.mask.MaskingPolicy;
 import com.piimask.core.normalize.KoreanDigits;
@@ -49,6 +52,31 @@ public final class MaskingEngine {
         List<Detector> all = new ArrayList<>(detectors);
         all.addAll(extra);
         return new MaskingEngine(all, itn);
+    }
+
+    /**
+     * 이름 사전을 바꾼 새 엔진: 규칙 이름 탐지기를 이 사전으로 다시 만들고, 추가 탐지어가 있으면 사전 탐지기를 그 뒤에 둔다.
+     * 다른 탐지기와 ITN 설정은 그대로.
+     */
+    public MaskingEngine withDictionary(NameDictionary dict) {
+        List<Detector> out = new ArrayList<>();
+        for (Detector d : detectors) {
+            if (d instanceof DictionaryNameDetector) {
+                continue;
+            }
+            if (d instanceof NameRuleDetector) {
+                out.add(new NameRuleDetector(dict));
+                if (!dict.forced().isEmpty()) {
+                    out.add(new DictionaryNameDetector(dict.forced()));
+                }
+            } else {
+                out.add(d);
+            }
+        }
+        if (!dict.forced().isEmpty() && out.stream().noneMatch(d -> d instanceof DictionaryNameDetector)) {
+            out.add(new DictionaryNameDetector(dict.forced()));
+        }
+        return new MaskingEngine(out, itn);
     }
 
     /** ITN 을 끈 같은 엔진(회귀 비교용) */

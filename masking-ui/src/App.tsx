@@ -6,12 +6,13 @@ import Dashboard from './pages/Dashboard'
 import Connections from './pages/Connections'
 import Jobs from './pages/Jobs'
 import DetectLab from './pages/DetectLab'
+import Dictionary from './pages/Dictionary'
 import History from './pages/History'
 import Users from './pages/Users'
 import Account from './pages/Account'
 import { Login, Setup } from './pages/Login'
 
-type Page = 'dashboard' | 'jobs' | 'connections' | 'detect' | 'history' | 'users' | 'account'
+type Page = 'dashboard' | 'jobs' | 'connections' | 'detect' | 'dictionary' | 'history' | 'users' | 'account'
 
 // roles 가 없으면 로그인한 모두. 서버 권한 표(SecurityConfig)와 맞춘다
 const NAV: { id: Page; label: string; roles?: RoleCode[] }[] = [
@@ -19,6 +20,7 @@ const NAV: { id: Page; label: string; roles?: RoleCode[] }[] = [
   { id: 'jobs', label: '마스킹 작업' },
   { id: 'connections', label: 'DB 접속', roles: ['CONFIGURER'] },
   { id: 'detect', label: '탐지 테스트', roles: ['CONFIGURER'] },
+  { id: 'dictionary', label: '이름 사전', roles: ['CONFIGURER'] },
   { id: 'history', label: '실행·감사 이력', roles: ['CONFIGURER', 'OPERATOR', 'AUDITOR', 'ADMIN'] },
   { id: 'users', label: '사용자 관리', roles: ['ADMIN'] },
   { id: 'account', label: '내 계정' },
@@ -131,6 +133,7 @@ export default function App() {
           {page === 'jobs' && <Jobs go={go} notify={notify} arg={route.arg} />}
           {page === 'connections' && <Connections notify={notify} />}
           {page === 'detect' && <DetectLab />}
+          {page === 'dictionary' && <Dictionary notify={notify} />}
           {page === 'history' && <History />}
           {page === 'users' && <Users notify={notify} />}
           {page === 'account' && <Account notify={notify} onLogout={logout} />}
