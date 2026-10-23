@@ -99,9 +99,9 @@ class DictionaryApiTest {
 
     @Test
     void forced_term_detects_without_context() throws Exception {
-        assertFalse(detect("어제 " + FORCED + "한테 들었어요").contains("[이름]"));
+        assertFalse(detect("어제 " + FORCED + " 봤어요").contains("[이름]"));
         add("FORCE", FORCED);
-        assertTrue(detect("어제 " + FORCED + "한테 들었어요").contains("어제 [이름]한테"));
+        assertTrue(detect("어제 " + FORCED + " 봤어요").contains("어제 [이름] 봤어요"));
     }
 
     @Test
@@ -179,7 +179,7 @@ class DictionaryApiTest {
     void engine_taken_before_a_change_keeps_its_dictionary() throws Exception {
         MaskingEngine running = engines.current();
         add("FORCE", FORCED);
-        String text = "어제 " + FORCED + "한테 들었어요";
+        String text = "어제 " + FORCED + " 봤어요";
         assertTrue(running.detect(text, Set.of(EntityType.NAME)).isEmpty());
         assertEquals(1, engines.current().detect(text, Set.of(EntityType.NAME)).size());
     }

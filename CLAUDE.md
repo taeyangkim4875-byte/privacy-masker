@@ -6,6 +6,7 @@ STT/TTS 이력 DB(MariaDB)의 개인정보를 탐지·마스킹해 별도 테이
 ## 구조
 - `masking-core/`  탐지·병합·치환 엔진. 순수 Java, Spring·DB 의존성 금지. `normalize/` 는 ITN(한글로 읽은 숫자 → 숫자열, 원문 오프셋 유지), `dict/` 는 이름 사전(기본 성씨·예외어는 리소스 파일 `com/piimask/core/dict/*.txt`)
   - 탐지 규칙을 바꾸면 `SeedRegressionTest`(시드 전체 ITN 끔/켬 비교, 유형별 건수 출력)가 함께 돈다
+  - 이름 Recall·Precision 은 `NameEvalTest`(`src/test/resources/eval/`). 보류셋(`names-holdout*.txt`)을 보고 규칙을 고치지 않는다. 새로 고칠 땐 새 보류셋을 먼저 쓴다
 - `masking-app/`   Spring Boot 4.1: 접속·작업 설정 API, 증분 배치, 스케줄, H2 메타 DB
 - `masking-ui/`    React + Vite. 빌드 결과는 Gradle 이 app 의 static/ 에 넣는다
 - `docker/`        로컬 테스트용 MariaDB 스키마와 가짜 시드(`scripts/gen_seed.py` 로 생성)

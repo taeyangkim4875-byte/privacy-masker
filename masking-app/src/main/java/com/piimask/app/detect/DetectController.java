@@ -93,7 +93,7 @@ public class DetectController {
             // 사전 단어는 실명일 수 있으므로 건수만 보여준다(이 API 는 모든 역할이 본다)
             m.put("pattern", d instanceof RegexDetector rd ? rd.regex()
                     : d instanceof DictionaryNameDetector dd ? "사용자 추가 탐지어 " + dd.size() + "개(문맥 없이 일치)"
-                    : "성씨 + 문맥 단서(성함/고객님/입니다 등), 예외 사전 적용");
+                    : "성씨 + 문맥 단서(성함/고객님/입니다 등) + 약한 단서 점수화(인데요/한테/받는 분 등), 예외 사전 적용");
             detectors.add(m);
         }
         Map<String, Object> out = new LinkedHashMap<>();

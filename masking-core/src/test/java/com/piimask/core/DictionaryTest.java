@@ -125,7 +125,7 @@ class DictionaryTest {
     @Test
     void forced_terms_detect_without_context() {
         MaskingEngine e = engine.withDictionary(NameDictionary.builtIn().withUser(List.of(), List.of("홍길순", "TAEYANG")));
-        assertEquals(List.of("홍길순"), names(e, "어제 홍길순한테 들었어요"));
+        assertEquals(List.of("홍길순"), names(e, "어제 홍길순 봤어요"));
         assertEquals(List.of("홍길순"), names(e, "(홍길순) 메모"));
         // 앞이 한글이면 다른 단어의 일부로 본다
         assertEquals(List.of(), names(e, "박홍길순한테"));
@@ -133,7 +133,7 @@ class DictionaryTest {
         assertEquals(List.of("taeyang"), names(e, "taeyang 님"));
         assertEquals(List.of(), names(e, "XTAEYANG TAEYANGS"));
         // 추가 탐지어가 없는 기본 엔진은 잡지 않는다
-        assertEquals(List.of(), names(engine, "어제 홍길순한테 들었어요"));
+        assertEquals(List.of(), names(engine, "어제 홍길순 봤어요"));
     }
 
     @Test

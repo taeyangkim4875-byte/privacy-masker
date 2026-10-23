@@ -64,8 +64,8 @@ public final class MaskingEngine {
             if (d instanceof DictionaryNameDetector) {
                 continue;
             }
-            if (d instanceof NameRuleDetector) {
-                out.add(new NameRuleDetector(dict));
+            if (d instanceof NameRuleDetector nr) {
+                out.add(new NameRuleDetector(dict, nr.scoring()));
                 if (!dict.forced().isEmpty()) {
                     out.add(new DictionaryNameDetector(dict.forced()));
                 }
@@ -75,6 +75,15 @@ public final class MaskingEngine {
         }
         if (!dict.forced().isEmpty() && out.stream().noneMatch(d -> d instanceof DictionaryNameDetector)) {
             out.add(new DictionaryNameDetector(dict.forced()));
+        }
+        return new MaskingEngine(out, itn);
+    }
+
+    /** 이름 점수화를 끈 같은 엔진(강한 단서 규칙만, 평가·회귀 비교용) */
+    public MaskingEngine withoutNameScoring() {
+        List<Detector> out = new ArrayList<>();
+        for (Detector d : detectors) {
+            out.add(d instanceof NameRuleDetector nr ? new NameRuleDetector(nr.dictionary(), false) : d);
         }
         return new MaskingEngine(out, itn);
     }

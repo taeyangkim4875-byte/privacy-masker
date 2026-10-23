@@ -195,6 +195,38 @@ class SeedRegressionTest {
     private static final Pattern SEED_NAME = Pattern.compile(
             "(?:남궁|황보|제갈|[" + SEED_SURNAMES + "])[" + SEED_GIVEN + "]{1,2}");
 
+    /** 이름 점수화 켬/끔: 이름 아닌 유형은 그대로, 기존 이름 스팬은 유지, 새 스팬은 시드 이름 형태여야 한다 */
+    @Test
+    void name_scoring_only_adds_seed_shaped_names() throws IOException {
+        MaskingEngine on = MaskingEngine.withDefaults();
+        MaskingEngine off = on.withoutNameScoring();
+        Set<EntityType> others = java.util.EnumSet.complementOf(java.util.EnumSet.of(EntityType.NAME));
+        List<String> problems = new ArrayList<>();
+        int added = 0;
+        for (Row r : seedRows()) {
+            String t = r.text();
+            String where = r.table() + "#" + r.no();
+            if (!on.detect(t, others).equals(off.detect(t, others))) {
+                problems.add(where + ": 이름 아닌 유형의 결과가 바뀜");
+            }
+            List<Span> a = off.detect(t, Set.of(EntityType.NAME));
+            List<Span> b = on.detect(t, Set.of(EntityType.NAME));
+            if (!b.containsAll(a)) {
+                problems.add(where + ": 점수화로 기존 이름 스팬이 바뀜");
+            }
+            for (Span s : b) {
+                if (!a.contains(s)) {
+                    added++;
+                    if (!SEED_NAME.matcher(t.substring(s.start(), s.end())).matches()) {
+                        problems.add(where + ": 점수화로 이름 형태가 아닌 스팬이 생김");
+                    }
+                }
+            }
+        }
+        System.out.println("이름 점수화 끔 → 켬: 시드에서 새 이름 스팬 " + added + "건");
+        assertTrue(problems.isEmpty(), String.join("\n", problems));
+    }
+
     /** 사전 도입 전 STOPWORDS 에 있던 말 중 시드 이름 형태인 것(그때부터 이름으로 보지 않았음) */
     private static final Set<String> LEGACY_NAME_SHAPED = Set.of("한도", "오늘", "주소", "정도", "최소", "임시");
 
