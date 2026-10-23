@@ -159,6 +159,49 @@ export interface AuditEntry {
   createdAt: string
 }
 
+/** 교정 라벨(원문 없음). stale: 저장 뒤 원천 값이 바뀜 */
+export type LabelKind = 'NOT_PII' | 'MISSED'
+
+export interface LabelView {
+  id: number
+  pk: string
+  column: string
+  start: number
+  end: number
+  label: LabelKind
+  entityType: EntityCode
+  detector: string | null
+  createdBy: string
+  createdAt: string
+  stale: boolean
+}
+
+export interface LabelSummaryRow {
+  connectionId: number
+  sourceTable: string
+  label: LabelKind
+  entityType: EntityCode
+  detector: string | null
+  count: number
+  /** 테이블을 지정해 요청했을 때만 */
+  stale: number | null
+}
+
+export interface LabelAdd {
+  connectionId: number
+  sourceTable: string
+  pkColumn: string
+  pk: string
+  column: string
+  start: number
+  end: number
+  label: LabelKind
+  entityType: EntityCode
+  detector: string | null
+  jobId: number | null
+  addException: boolean
+}
+
 export type DictKind = 'EXCEPT' | 'FORCE'
 
 export interface DictEntry {
@@ -293,6 +336,14 @@ export const api = {
   runJob: (id: number) => call<{ executionId: number }>('POST', `/api/jobs/${id}/run`),
   stopJob: (id: number) => call<{ stopping: boolean }>('POST', `/api/jobs/${id}/stop`),
   resetWatermark: (id: number) => call<void>('POST', `/api/jobs/${id}/reset-watermark`),
+
+  addLabel: (r: LabelAdd) => call<LabelView>('POST', '/api/labels', r),
+  queryLabels: (connectionId: number, sourceTable: string, pkColumn: string, pks: string[]) =>
+    call<LabelView[]>('POST', '/api/labels/query', { connectionId, sourceTable, pkColumn, pks }),
+  deleteLabel: (id: number) => call<void>('DELETE', '/api/labels/' + id),
+  labelSummary: (connectionId?: number, sourceTable?: string) =>
+    call<LabelSummaryRow[]>('GET', '/api/labels/summary' + (connectionId !== undefined && sourceTable
+      ? `?connectionId=${connectionId}&sourceTable=${encodeURIComponent(sourceTable)}` : '')),
 
   dictionary: () => call<DictionaryView>('GET', '/api/dictionary'),
   addDictionary: (kind: DictKind, terms: string[]) =>

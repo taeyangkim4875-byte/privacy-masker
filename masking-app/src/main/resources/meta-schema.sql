@@ -178,3 +178,25 @@ CREATE TABLE IF NOT EXISTS name_dictionary (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_name_dictionary UNIQUE (kind, term)
 );
+
+-- 교정 라벨(2단계): 미리보기에서 "이름 아님(NOT_PII) / 놓침(MISSED)" 표시. 원문은 저장하지 않고 원천 위치만 가리킨다.
+-- row_fp: 저장 당시 원천 값의 HMAC 지문(CryptoService.fingerprint). 지금 값과 다르면 "원천 변경됨"으로 보고 쓰지 않는다
+CREATE TABLE IF NOT EXISTS span_label (
+    id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+    connection_id BIGINT       NOT NULL,
+    source_table  VARCHAR(128) NOT NULL,
+    pk_column     VARCHAR(128) NOT NULL,
+    pk_value      VARCHAR(255) NOT NULL,
+    column_name   VARCHAR(128) NOT NULL,
+    start_pos     INT          NOT NULL,
+    end_pos       INT          NOT NULL,
+    label         VARCHAR(10)  NOT NULL,
+    entity_type   VARCHAR(10)  NOT NULL,
+    detector      VARCHAR(100),
+    job_id        BIGINT,
+    row_fp        VARCHAR(64)  NOT NULL,
+    created_by    VARCHAR(100) NOT NULL,
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    -- 같은 자리에는 라벨 하나(이름 아님·놓침을 동시에 달 수 없음). 원천이 바뀐 라벨은 다시 달면 덮어쓴다(LabelService)
+    CONSTRAINT uq_span_label_pos UNIQUE (connection_id, source_table, pk_value, column_name, start_pos, end_pos)
+);

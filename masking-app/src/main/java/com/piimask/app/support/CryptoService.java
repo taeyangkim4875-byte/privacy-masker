@@ -73,6 +73,34 @@ public class CryptoService {
         }
     }
 
+    /**
+     * 값의 지문: HMAC-SHA256(용도별 파생 키, 값) 16진수. 파생 키 = HMAC(마스터키, "piimask:" + 용도).
+     * 원문을 저장하지 않고 "같은 값인지"만 확인할 때 쓴다(짧은 이름도 키 없이는 대입으로 되돌릴 수 없음).
+     */
+    public String fingerprint(String purpose, String value) {
+        try {
+            byte[] sub = derivedKeys.computeIfAbsent(purpose, this::derive);
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(sub, "HmacSHA256"));
+            return java.util.HexFormat.of().formatHex(mac.doFinal(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("지문 계산 실패", e);
+        }
+    }
+
+    /** 용도별 파생 키(캐시). 마스터키를 바꾸면 지문이 모두 바뀐다(교정 라벨은 전부 "원천 변경됨"이 된다) */
+    private final java.util.Map<String, byte[]> derivedKeys = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private byte[] derive(String purpose) {
+        try {
+            javax.crypto.Mac derive = javax.crypto.Mac.getInstance("HmacSHA256");
+            derive.init(new SecretKeySpec(key.getEncoded(), "HmacSHA256"));
+            return derive.doFinal(("piimask:" + purpose).getBytes(StandardCharsets.UTF_8));
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("키 파생 실패", e);
+        }
+    }
+
     public String decrypt(String enc) {
         if (enc == null) {
             return null;

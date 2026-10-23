@@ -46,5 +46,6 @@ STT/TTS 이력 DB(MariaDB)의 개인정보를 탐지·마스킹해 별도 테이
 - 규칙 기반 이름 탐지(`NameRuleDetector`)를 2단계에서 당겨 넣음(베이스라인 용도)
 - 엔진은 `dict/EngineProvider.current()` 로 받는다(사용자 사전 반영, 사전이 바뀌면 새 엔진으로 교체). 배치는 실행을 만들 때 한 번 받는다. `MaskingEngine` 빈은 기본 사전만 쓰는 엔진(사용자 사전 미반영)
 - 화자 문맥: 작업 설정의 통화 ID·화자 컬럼으로 배치가 `DialogBinding` 을 만든다. 행은 PK 순서로 한 번씩만 처리한다는 전제라 스텝을 fault-tolerant 로 바꾸지 않는다. 메타 DB 컬럼 추가는 `support/MetaMigration`(meta-schema.sql 에서 ALTER 하지 않음: 연결마다 실행됨)
+- 교정 라벨(`label/`)은 원문을 저장하지 않는다: 원천 위치 + HMAC 행 지문(`CryptoService.fingerprint`)만. 원천 값이 필요하면 서버가 다시 SELECT 한다. 학습 반출 기능은 보안 승인 전까지 만들지 않는다
 - 사전 단어(특히 추가 탐지어)는 실명일 수 있다: 로그·감사·오류 메시지·`/api/meta` 에 단어를 넣지 않는다(종류·건수·id 만)
 - 기본 예외 사전에 이름일 수 있는 말을 넣지 않는다(`SeedRegressionTest` 가 시드 이름 형태의 예외어를 막는다)

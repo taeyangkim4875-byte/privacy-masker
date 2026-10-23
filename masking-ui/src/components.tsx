@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { ENTITY_LABEL, ENTITY_ORDER, type EntityCode, type SpanView } from './api'
+import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { ENTITY_LABEL, ENTITY_ORDER, type EntityCode, type LabelView, type SpanView } from './api'
 
 /** 원문 + 탐지 스팬 → 유형별 색 하이라이트 */
 export function SourceText({ text, spans }: { text: string | null; spans: SpanView[] }) {
@@ -17,6 +17,83 @@ export function SourceText({ text, spans }: { text: string | null; spans: SpanVi
   })
   if (pos < text.length) out.push(text.slice(pos))
   return <>{out}</>
+}
+
+/** 드래그 끝의 click 은 무시한다(드래그를 스팬 클릭으로 덮어쓰지 않게) */
+const clickOnly = (f: () => void) => () => {
+  if (window.getSelection()?.isCollapsed ?? true) f()
+}
+
+/**
+ * 교정 라벨을 달 수 있는 원문: 탐지 스팬을 누르면 onSpanClick, 글자를 드래그해 고르면 onSelectRange(원문 기준 위치).
+ * 이름 아님 라벨은 취소선, 놓침 라벨은 점선 밑줄. 조각마다 data-off(원문 시작 위치)를 달아 선택 위치를 계산한다.
+ */
+export function LabelableSource({
+  text,
+  spans,
+  labels,
+  onSpanClick,
+  onLabelClick,
+  onSelectRange,
+}: {
+  text: string | null
+  spans: SpanView[]
+  labels: LabelView[]
+  onSpanClick: (s: SpanView) => void
+  onLabelClick: (l: LabelView) => void
+  onSelectRange: (start: number, end: number) => void
+}) {
+  if (text === null) return <span className="muted">(NULL)</span>
+  const cuts = new Set<number>([0, text.length])
+  spans.forEach((s) => { cuts.add(s.start); cuts.add(s.end) })
+  const missed = labels.filter((l) => l.label === 'MISSED' && !l.stale)
+  missed.forEach((l) => { cuts.add(Math.min(l.start, text.length)); cuts.add(Math.min(l.end, text.length)) })
+  const points = [...cuts].sort((a, b) => a - b)
+  const out: ReactNode[] = []
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i]
+    const b = points[i + 1]
+    if (a >= b) continue
+    const span = spans.find((s) => s.start <= a && b <= s.end)
+    const miss = missed.find((l) => l.start <= a && b <= l.end)
+    const piece = text.slice(a, b)
+    if (span) {
+      const rejected = labels.find((l) => l.label === 'NOT_PII' && !l.stale && l.start === span.start && l.end === span.end)
+      out.push(
+        <mark key={a} data-off={a} className={`pii pii-${span.type}${rejected ? ' pii-rejected' : ''}${miss ? ' pii-missed' : ''}`}
+              title={`${span.label} · ${span.detector}${rejected ? ' · 이름 아님으로 표시됨' : ''}`}
+              onClick={clickOnly(() => (rejected ? onLabelClick(rejected) : miss ? onLabelClick(miss) : onSpanClick(span)))}>
+          {piece}
+        </mark>,
+      )
+    } else if (miss) {
+      out.push(<span key={a} data-off={a} className="pii-missed" title="놓침으로 표시됨" onClick={clickOnly(() => onLabelClick(miss))}>{piece}</span>)
+    } else {
+      out.push(<span key={a} data-off={a}>{piece}</span>)
+    }
+  }
+  // 선택 위치: 루트 처음부터 선택 끝점까지 잘라 낸 글자 수(렌더된 글자 = 원문이므로 UTF-16 위치가 그대로 맞다).
+  // 끝점이 요소 노드이거나 루트 밖이어도 루트와 겹치는 부분만 쓴다
+  const onMouseUp = (e: ReactMouseEvent<HTMLSpanElement>) => {
+    const root = e.currentTarget
+    const sel = window.getSelection()
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return
+    const r = sel.getRangeAt(0)
+    const whole = document.createRange()
+    whole.selectNodeContents(root)
+    const offsetOf = (node: Node, offset: number) => {
+      const pre = document.createRange()
+      pre.selectNodeContents(root)
+      pre.setEnd(node, offset)
+      return pre.toString().length
+    }
+    let s = r.compareBoundaryPoints(Range.START_TO_START, whole) <= 0 ? 0 : offsetOf(r.startContainer, r.startOffset)
+    let t = r.compareBoundaryPoints(Range.END_TO_END, whole) >= 0 ? text.length : offsetOf(r.endContainer, r.endOffset)
+    while (s < t && /\s/.test(text[s])) s++
+    while (t > s && /\s/.test(text[t - 1])) t--
+    if (t > s) onSelectRange(s, t)
+  }
+  return <span className="labelable" onMouseUp={onMouseUp}>{out}</span>
 }
 
 /**

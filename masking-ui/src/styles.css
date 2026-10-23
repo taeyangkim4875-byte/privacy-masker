@@ -856,3 +856,29 @@ textarea.input {
   flex-wrap: wrap;
   gap: 6px;
 }
+
+/* 교정 라벨: 이름 아님(취소선) / 놓침(점선 밑줄) */
+.labelable .pii {
+  cursor: pointer;
+}
+
+.pii.pii-rejected {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  opacity: 0.6;
+}
+
+.pii-missed {
+  text-decoration: underline dashed var(--bad);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.label-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin: 0 0 12px;
+}

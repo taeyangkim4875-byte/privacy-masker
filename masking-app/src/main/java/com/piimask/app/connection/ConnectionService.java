@@ -107,6 +107,8 @@ public class ConnectionService {
             throw ApiException.conflict("이 접속을 사용하는 작업이 " + jobs + "개 있습니다. 작업을 먼저 삭제하세요.");
         }
         jdbc.update("DELETE FROM db_connection WHERE id = ?", id);
+        // 이 접속의 원천 위치를 가리키던 교정 라벨도 지운다(가리킬 원천이 없어짐)
+        jdbc.update("DELETE FROM span_label WHERE connection_id = ?", id);
         registry.evict(id);
         audit.log("CONNECTION_DELETE", "connection#" + id + " " + c.name(), "OK");
     }

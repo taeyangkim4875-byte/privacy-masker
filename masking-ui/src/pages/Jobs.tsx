@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   api,
   ENTITY_LABEL,
@@ -11,11 +11,14 @@ import {
   type Job,
   type DialogSpec,
   type JobRequest,
+  type LabelSummaryRow,
+  type LabelView,
+  type SpanView,
   type PolicyCode,
   type PreviewResult,
   type TableInfo,
 } from '../api'
-import { EntityChips, Legend, MaskedText, num, SourceText, Status } from '../components'
+import { EntityChips, LabelableSource, Legend, MaskedText, num, Status } from '../components'
 import type { Go, Notify } from '../App'
 import { useHas } from '../auth'
 
@@ -87,6 +90,18 @@ export default function Jobs({ go, notify, arg }: { go: Go; notify: Notify; arg:
 
 type ColMode = 'MASK' | 'COPY' | 'SKIP'
 
+/** 화면에서 고른 교정 동작(저장 전). preview 는 화면 표시용으로만 쓰고 서버로 보내지 않는다 */
+type PendingLabel = {
+  pk: string
+  column: string
+  start: number
+  end: number
+  kind: 'NOT_PII' | 'MISSED'
+  detector: string | null
+  preview: string
+  existing: LabelView | null
+}
+
 const CRON_PRESETS: { label: string; value: string }[] = [
   { label: '수동 실행만', value: '' },
   { label: '매시 정각', value: '0 0 * * * *' },
@@ -117,6 +132,18 @@ function JobEditor({ job, go, notify, onSaved }: { job: Job | null; go: Go; noti
   const [dialog, setDialog] = useState<DialogSpec>(job?.dialog ?? { callColumn: '', speakerColumn: '', agentValue: '' })
 
   const [preview, setPreview] = useState<PreviewResult | null>(null)
+  // 교정 라벨: 미리보기 행의 라벨, 지금 고른 동작(스팬 클릭·드래그), 이 원천 테이블의 요약
+  const [labels, setLabels] = useState<LabelView[]>([])
+  const [pending, setPending] = useState<PendingLabel | null>(null)
+  const [addException, setAddException] = useState(false)
+  const [summary, setSummary] = useState<LabelSummaryRow[] | null>(null)
+  const [labelBusy, setLabelBusy] = useState(false)
+  const labelReq = useRef(0)
+  // 고른 동작이 바뀌면 "예외 사전에도 추가" 는 항상 꺼진 상태로 다시 시작한다
+  const choose = (p: PendingLabel | null) => {
+    setPending(p)
+    setAddException(false)
+  }
   const [ddl, setDdl] = useState<DdlView | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -196,12 +223,60 @@ function JobEditor({ job, go, notify, onSaved }: { job: Job | null; go: Go; noti
   const step1 = !!(connectionId && sourceTable && pkColumn && targetTable)
   const step2 = step1 && maskCount > 0
 
+  const loadLabels = async (p: PreviewResult | null) => {
+    if (!p || connectionId === null) return
+    const req = ++labelReq.current // 늦게 온 이전 응답이 새 미리보기의 라벨을 덮지 않게
+    api.queryLabels(connectionId, sourceTable, pkColumn, p.rows.map((r) => r.pk))
+      .then((ls) => req === labelReq.current && setLabels(ls))
+      .catch((e: Error) => notify({ kind: 'bad', text: e.message }))
+    api.labelSummary(connectionId, sourceTable)
+      .then((sm) => req === labelReq.current && setSummary(sm))
+      .catch(() => req === labelReq.current && setSummary(null))
+  }
+
+  const removeLabels = async (ids: number[]) => {
+    try {
+      for (const id of ids) await api.deleteLabel(id)
+      notify({ kind: 'ok', text: `라벨 ${ids.length}건을 지웠습니다` })
+      loadLabels(preview)
+    } catch (e) {
+      notify({ kind: 'bad', text: (e as Error).message })
+    }
+  }
+
+  const saveLabel = async () => {
+    if (!pending || connectionId === null || labelBusy) return
+    setLabelBusy(true)
+    try {
+      if (pending.existing) {
+        await api.deleteLabel(pending.existing.id)
+        notify({ kind: 'ok', text: '라벨을 지웠습니다' })
+      } else {
+        await api.addLabel({
+          connectionId, sourceTable, pkColumn, pk: pending.pk, column: pending.column, start: pending.start, end: pending.end,
+          label: pending.kind, entityType: 'NAME', detector: pending.detector, jobId: job?.id ?? null,
+          addException: pending.kind === 'NOT_PII' && addException,
+        })
+        notify({ kind: 'ok', text: pending.kind === 'NOT_PII' ? '이름 아님으로 표시했습니다' : '놓침으로 표시했습니다' })
+      }
+      choose(null)
+      loadLabels(preview)
+    } catch (e) {
+      notify({ kind: 'bad', text: (e as Error).message })
+    } finally {
+      setLabelBusy(false)
+    }
+  }
+
   const runPreview = async () => {
     setBusy(true)
     setErr(null)
     try {
       const [p, d] = await Promise.all([api.previewDraft(request, 20), api.ddl(request)])
       setPreview(p)
+      choose(null)
+      setLabels([])
+      loadLabels(p)
       setDdl(d)
     } catch (e) {
       setErr((e as Error).message)
@@ -525,6 +600,31 @@ function JobEditor({ job, go, notify, onSaved }: { job: Job | null; go: Go; noti
                   <Legend counts={preview.countsByType} />
                   <span className="small muted">{preview.rows.length}건 · {preview.elapsedMs}ms</span>
                 </div>
+                <p className="small muted" style={{ margin: '0 0 8px' }}>
+                  교정: 이름으로 잘못 잡힌 표시를 누르면 &quot;이름 아님&quot;, 놓친 이름을 드래그하면 &quot;놓침&quot;으로 표시합니다. 원문은 저장하지 않고 위치만 남깁니다.
+                </p>
+                {summary && summary.length > 0 && (
+                  <details style={{ marginBottom: 12 }}>
+                    <summary className="small" style={{ cursor: 'pointer' }}>
+                      이 테이블의 교정 라벨 {summary.reduce((a, x) => a + x.count, 0)}건
+                    </summary>
+                    <div className="table-wrap">
+                      <table>
+                        <thead><tr><th>종류</th><th>탐지기</th><th>건수</th><th>원천 변경으로 무효</th></tr></thead>
+                        <tbody>
+                          {summary.map((x, i) => (
+                            <tr key={i}>
+                              <td>{x.label === 'NOT_PII' ? '이름 아님' : '놓침'}</td>
+                              <td className="small">{x.detector ?? '-'}</td>
+                              <td className="mono">{num(x.count)}</td>
+                              <td className="mono">{x.stale === null ? '-' : num(x.stale)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </details>
+                )}
                 <div className="transcript">
                   <div className="transcript-head">
                     <span>PK</span>
@@ -537,8 +637,56 @@ function JobEditor({ job, go, notify, onSaved }: { job: Job | null; go: Go; noti
                         <div className="utter-head">
                           <span className="mono">{r.pk}</span>
                           {r.cells.length > 1 && <div>{cell.column}</div>}
+                          {(() => {
+                            const stale = labels.filter((l) => l.pk === r.pk && l.column === cell.column && l.stale)
+                            return stale.length > 0 && (
+                              <button className="btn small" title="원천 값이 바뀌어 위치를 믿을 수 없는 라벨" onClick={() => removeLabels(stale.map((l) => l.id))}>
+                                무효 라벨 {stale.length}건 지우기
+                              </button>
+                            )
+                          })()}
                         </div>
-                        <div className="utter-text"><SourceText text={cell.original} spans={cell.spans} /></div>
+                        <div className="utter-text">
+                          <LabelableSource
+                            text={cell.original}
+                            spans={cell.spans}
+                            labels={labels.filter((l) => l.pk === r.pk && l.column === cell.column)}
+                            onSpanClick={(sp: SpanView) => sp.type === 'NAME' && choose({
+                              pk: r.pk, column: cell.column, start: sp.start, end: sp.end, kind: 'NOT_PII', detector: sp.detector,
+                              preview: (cell.original ?? '').slice(sp.start, sp.end), existing: null,
+                            })}
+                            onLabelClick={(l: LabelView) => choose({
+                              pk: r.pk, column: cell.column, start: l.start, end: l.end, kind: l.label, detector: l.detector,
+                              preview: (cell.original ?? '').slice(l.start, l.end), existing: l,
+                            })}
+                            onSelectRange={(a: number, b: number) => {
+                              if (b - a > 100) {
+                                notify({ kind: 'bad', text: '놓침은 100자까지 고를 수 있습니다' })
+                                return
+                              }
+                              choose({
+                                pk: r.pk, column: cell.column, start: a, end: b, kind: 'MISSED', detector: null,
+                                preview: (cell.original ?? '').slice(a, b), existing: null,
+                              })
+                            }}
+                          />
+                          {pending && pending.pk === r.pk && pending.column === cell.column && (
+                            <div className="notice info label-bar" style={{ marginTop: 8 }}>
+                              <span>
+                                &ldquo;{pending.preview}&rdquo; →{' '}
+                                {pending.existing ? '라벨 지우기' : pending.kind === 'NOT_PII' ? '이름 아님(오탐)' : '놓침(이름)'}
+                              </span>
+                              {!pending.existing && pending.kind === 'NOT_PII' && (
+                                <label className="small" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                                  <input type="checkbox" checked={addException} onChange={(e) => setAddException(e.target.checked)} />
+                                  이 단어를 예외 사전에도 추가(모든 문장에 적용, 평문 저장)
+                                </label>
+                              )}
+                              <button className="btn small primary" onClick={saveLabel} disabled={labelBusy}>{pending.existing ? '지우기' : '저장'}</button>
+                              <button className="btn small" onClick={() => choose(null)}>취소</button>
+                            </div>
+                          )}
+                        </div>
                         <div className="utter-text after"><MaskedText original={cell.original} masked={cell.masked} spans={cell.spans} /></div>
                       </div>
                     )),
