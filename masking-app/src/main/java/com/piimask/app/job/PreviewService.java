@@ -10,9 +10,12 @@ import com.piimask.app.job.JobDtos.SpanView;
 import com.piimask.app.support.ApiException;
 import com.piimask.app.support.Errors;
 import com.piimask.app.support.Sql;
+import com.piimask.app.batch.DialogValues;
 import com.piimask.app.dict.EngineProvider;
+import com.piimask.core.DetectionContext;
 import com.piimask.core.MaskingEngine;
 import com.piimask.core.Span;
+import com.piimask.core.dialog.DialogTracker;
 import org.springframework.stereotype.Service;
 
 import java.sql.Connection;
@@ -45,9 +48,13 @@ public class PreviewService {
         int n = Math.max(1, Math.min(limit, 200));
         List<ColumnSpec> maskCols = job.maskColumns();
         List<String> names = maskCols.stream().map(ColumnSpec::column).toList();
-        String sql = "SELECT " + Sql.q(job.pkColumn()) + ", " + Sql.qList(names)
+        // 대화 문맥: 통화 ID·화자 컬럼을 뒤에 붙여 읽는다(마스킹하지 않고 문맥 판단에만 씀)
+        boolean dialog = job.hasDialog();
+        String extra = dialog ? ", " + Sql.q(job.dialog().callColumn()) + ", " + Sql.q(job.dialog().speakerColumn()) : "";
+        String sql = "SELECT " + Sql.q(job.pkColumn()) + ", " + Sql.qList(names) + extra
                 + " FROM " + Sql.q(job.sourceTable()) + " ORDER BY " + Sql.q(job.pkColumn()) + " LIMIT ?";
         MaskingEngine engine = engines.current();
+        DialogTracker tracker = new DialogTracker(10_000);
         long t0 = System.currentTimeMillis();
         Map<String, Integer> counts = new TreeMap<>();
         List<PreviewRow> rows = new ArrayList<>();
@@ -56,6 +63,15 @@ public class PreviewService {
             ps.setInt(1, n);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
+                    DetectionContext ctx = DetectionContext.NONE;
+                    if (dialog) {
+                        // 배치와 같은 규칙(DialogValues): 통화 ID·화자가 비면 상태를 건드리지 않는다
+                        String call = DialogValues.str(rs.getObject(maskCols.size() + 2));
+                        Object speaker = rs.getObject(maskCols.size() + 3);
+                        if (call != null && speaker != null) {
+                            ctx = tracker.next(call, DialogValues.isAgent(job.dialog().agentValue(), speaker), rs.getString(2));
+                        }
+                    }
                     List<PreviewCell> cells = new ArrayList<>();
                     for (int i = 0; i < maskCols.size(); i++) {
                         ColumnSpec col = maskCols.get(i);
@@ -64,7 +80,7 @@ public class PreviewService {
                             cells.add(new PreviewCell(col.column(), null, null, List.of()));
                             continue;
                         }
-                        MaskingEngine.Result r = engine.mask(text, JobDef.entitiesOf(col), job.policies(), job.hashSalt());
+                        MaskingEngine.Result r = engine.mask(text, JobDef.entitiesOf(col), job.policies(), job.hashSalt(), i == 0 ? ctx : DetectionContext.NONE);
                         for (Span s : r.spans()) {
                             counts.merge(s.type().name(), 1, Integer::sum);
                         }

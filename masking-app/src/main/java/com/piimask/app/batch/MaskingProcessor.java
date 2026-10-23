@@ -2,6 +2,7 @@ package com.piimask.app.batch;
 
 import com.piimask.app.batch.RunState.MaskedRow;
 import com.piimask.app.batch.RunState.SourceRow;
+import com.piimask.core.DetectionContext;
 import com.piimask.core.EntityType;
 import com.piimask.core.MaskingEngine;
 import com.piimask.core.mask.MaskingPolicy;
@@ -22,9 +23,17 @@ final class MaskingProcessor implements ItemProcessor<SourceRow, MaskedRow> {
     private final List<Set<EntityType>> maskEntities;
     private final Map<EntityType, MaskingPolicy> policies;
     private final String salt;
+    /** 대화 문맥(없으면 null). 행을 PK 순서로 처리하므로 통화별 상태를 이어 간다 */
+    private final DialogBinding dialog;
 
     MaskingProcessor(MaskingEngine engine, int copyCount, List<Set<EntityType>> maskEntities,
                      Map<EntityType, MaskingPolicy> policies, String salt) {
+        this(engine, copyCount, maskEntities, policies, salt, null);
+    }
+
+    MaskingProcessor(MaskingEngine engine, int copyCount, List<Set<EntityType>> maskEntities,
+                     Map<EntityType, MaskingPolicy> policies, String salt, DialogBinding dialog) {
+        this.dialog = dialog;
         this.engine = engine;
         this.firstMaskIndex = 1 + copyCount;
         this.maskEntities = maskEntities;
@@ -35,6 +44,8 @@ final class MaskingProcessor implements ItemProcessor<SourceRow, MaskedRow> {
     @Override
     public MaskedRow process(SourceRow row) {
         try {
+            // 문맥은 마스킹 전 원본 값으로 정한다
+            DetectionContext ctx = dialog == null ? DetectionContext.NONE : dialog.contextFor(row.pk(), row.values());
             Object[] out = row.values().clone();
             boolean hasPii = false;
             int spans = 0;
@@ -44,7 +55,8 @@ final class MaskingProcessor implements ItemProcessor<SourceRow, MaskedRow> {
                 if (text == null) {
                     continue;
                 }
-                MaskingEngine.Result r = engine.mask(text, maskEntities.get(i), policies, salt);
+                // 문맥은 발화(첫 마스킹 컬럼)에만 적용한다
+                MaskingEngine.Result r = engine.mask(text, maskEntities.get(i), policies, salt, i == 0 ? ctx : DetectionContext.NONE);
                 if (!r.spans().isEmpty()) {
                     hasPii = true;
                     spans += r.spans().size();

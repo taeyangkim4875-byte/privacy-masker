@@ -79,6 +79,13 @@ export interface Execution {
   errorMessage: string | null
 }
 
+/** 대화 문맥(선택): 통화 ID·화자 컬럼, 상담사 화자 값 */
+export interface DialogSpec {
+  callColumn: string
+  speakerColumn: string
+  agentValue: string
+}
+
 export interface Job {
   id: number
   name: string
@@ -95,6 +102,7 @@ export interface Job {
   watermark: string | null
   running: boolean
   lastExecution: Execution | null
+  dialog: DialogSpec | null
 }
 
 export interface JobRequest {
@@ -109,6 +117,7 @@ export interface JobRequest {
   columns: ColumnSpec[]
   policies: Record<string, PolicyCode>
   createTarget: boolean
+  dialog: DialogSpec | null
 }
 
 export interface SpanView {

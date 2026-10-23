@@ -25,6 +25,10 @@ CREATE TABLE IF NOT EXISTS masking_job (
     enabled       BOOLEAN       NOT NULL DEFAULT TRUE,
     policies      VARCHAR(400)  NOT NULL,
     hash_salt     VARCHAR(64)   NOT NULL,
+    -- 대화 문맥(2단계): 통화 ID·화자 컬럼, 상담사 화자 값. 모두 NULL 이면 사용 안 함. 이전 DB 는 MetaMigration 이 추가
+    dialog_call_column    VARCHAR(128),
+    dialog_speaker_column VARCHAR(128),
+    dialog_agent_value    VARCHAR(50),
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

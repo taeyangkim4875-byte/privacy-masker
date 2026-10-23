@@ -9,6 +9,7 @@ import {
   type DdlView,
   type EntityCode,
   type Job,
+  type DialogSpec,
   type JobRequest,
   type PolicyCode,
   type PreviewResult,
@@ -113,6 +114,7 @@ function JobEditor({ job, go, notify, onSaved }: { job: Job | null; go: Go; noti
   const [cron, setCron] = useState(job?.cron ?? '')
   const [enabled, setEnabled] = useState(job?.enabled ?? true)
   const [createTarget, setCreateTarget] = useState(true)
+  const [dialog, setDialog] = useState<DialogSpec>(job?.dialog ?? { callColumn: '', speakerColumn: '', agentValue: '' })
 
   const [preview, setPreview] = useState<PreviewResult | null>(null)
   const [ddl, setDdl] = useState<DdlView | null>(null)
@@ -153,10 +155,23 @@ function JobEditor({ job, go, notify, onSaved }: { job: Job | null; go: Go; noti
         })
         setModes(m)
         setEntities(en)
+        // 대화 문맥: 새 작업일 때만 call_id·speaker 같은 이름의 컬럼을 미리 고른다(기존 작업의 설정·"사용 안 함"은 그대로).
+        // 상담사 값은 데이터마다 달라(AGENT·A·상담사·1 …) 채우지 않는다. 비어 있으면 문맥은 꺼진 채로 저장할 수 없다
+        if (!job) {
+          const included = (n: string) => m[n] && m[n] !== 'SKIP'
+          const call = cols.find((c) => /^(call|session|conv|dialog)_?id$/i.test(c.name) && included(c.name))
+          const spk = cols.find((c) => /^(speaker|spk|role|talker)$/i.test(c.name) && included(c.name))
+          setDialog(call && spk ? { callColumn: call.name, speakerColumn: spk.name, agentValue: '' } : { callColumn: '', speakerColumn: '', agentValue: '' })
+        } else if (job.sourceTable !== sourceTable) {
+          setDialog({ callColumn: '', speakerColumn: '', agentValue: '' })
+        }
       })
       .catch((e: Error) => setErr(e.message))
   }, [connectionId, sourceTable, job])
 
+  // 대화 문맥은 셋 다 정했을 때만 보낸다(일부만 정하면 꺼진 채로 저장되고 화면에 경고)
+  const dialogReady = !!(dialog.callColumn && dialog.speakerColumn && dialog.agentValue.trim())
+  const dialogPartial = !dialogReady && !!(dialog.callColumn || dialog.speakerColumn || dialog.agentValue.trim())
   const request: JobRequest = useMemo(
     () => ({
       name: name || `${sourceTable} 마스킹`,
@@ -169,11 +184,12 @@ function JobEditor({ job, go, notify, onSaved }: { job: Job | null; go: Go; noti
       enabled,
       createTarget,
       policies,
+      dialog: dialogReady ? dialog : null,
       columns: columns
         .filter((c) => !c.primaryKey && modes[c.name] && modes[c.name] !== 'SKIP')
         .map((c) => ({ column: c.name, mode: modes[c.name] as 'MASK' | 'COPY', entities: modes[c.name] === 'MASK' ? entities[c.name] ?? [] : [] })),
     }),
-    [name, connectionId, sourceTable, pkColumn, targetTable, chunkSize, cron, enabled, createTarget, policies, columns, modes, entities],
+    [name, connectionId, sourceTable, pkColumn, targetTable, chunkSize, cron, enabled, createTarget, policies, columns, modes, entities, dialog, dialogReady],
   )
 
   const maskCount = request.columns.filter((c) => c.mode === 'MASK').length
@@ -413,6 +429,29 @@ function JobEditor({ job, go, notify, onSaved }: { job: Job | null; go: Go; noti
                   <div className="eg mono">{POLICY_EG[e][policies[e]]}</div>
                 </div>
               ))}
+            </div>
+            <div className="row-3">
+              <div className="field">
+                <label htmlFor="j-dlg-call">대화 문맥: 통화 ID 컬럼</label>
+                <select id="j-dlg-call" className="input mono" value={dialog.callColumn} onChange={(e) => { setDialog({ ...dialog, callColumn: e.target.value }); setPreview(null) }}>
+                  <option value="">사용 안 함</option>
+                  {request.columns.map((c) => <option key={c.column} value={c.column}>{c.column}</option>)}
+                </select>
+                <span className="hint">상담사가 이름을 물은 직후 고객 답("네 김태양")도 이름으로 잡습니다. 작업에 포함한 컬럼에서 고릅니다.</span>
+              </div>
+              <div className="field">
+                <label htmlFor="j-dlg-spk">화자 컬럼</label>
+                <select id="j-dlg-spk" className="input mono" value={dialog.speakerColumn} onChange={(e) => { setDialog({ ...dialog, speakerColumn: e.target.value }); setPreview(null) }}>
+                  <option value="">사용 안 함</option>
+                  {request.columns.map((c) => <option key={c.column} value={c.column}>{c.column}</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="j-dlg-agent">상담사 화자 값</label>
+                <input id="j-dlg-agent" className="input mono" placeholder="AGENT" value={dialog.agentValue} onChange={(e) => { setDialog({ ...dialog, agentValue: e.target.value }); setPreview(null) }} />
+                {dialogPartial && <span className="hint" style={{ color: 'var(--bad, #b42318)' }}>셋 다 정해야 대화 문맥이 켜집니다. 지금은 꺼진 채로 저장됩니다.</span>}
+                <span className="hint">같은 통화 안에서는 PK 순서가 발화 순서라고 보고, 질문 판별·문맥 적용은 첫 마스킹 컬럼(발화)에만 합니다. 원천에 (통화 ID, PK) 인덱스가 있으면 이어서 실행할 때 빠릅니다.</span>
+              </div>
             </div>
             <div className="row-3">
               <div className="field">

@@ -1,5 +1,6 @@
 package com.piimask.core.detect;
 
+import com.piimask.core.DetectionContext;
 import com.piimask.core.EntityType;
 import com.piimask.core.Span;
 
@@ -17,4 +18,9 @@ public interface Detector {
     String name();
 
     List<Span> detect(String text);
+
+    /** 문맥을 쓰는 탐지기만 다시 정의한다. 기본은 문맥 무시 */
+    default List<Span> detect(String text, DetectionContext ctx) {
+        return detect(text);
+    }
 }

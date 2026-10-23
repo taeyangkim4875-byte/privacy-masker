@@ -98,13 +98,18 @@ public final class MaskingEngine {
     }
 
     public List<Span> detect(String text, Set<EntityType> enabled) {
+        return detect(text, enabled, DetectionContext.NONE);
+    }
+
+    /** 문맥(예: 이름 질문에 대한 답)을 함께 넘겨 탐지. 문맥이 NONE 이면 {@link #detect(String, Set)} 와 같다 */
+    public List<Span> detect(String text, Set<EntityType> enabled, DetectionContext ctx) {
         if (text == null || text.isEmpty() || enabled.isEmpty()) {
             return List.of();
         }
         List<Span> raw = new ArrayList<>();
         for (Detector d : detectors) {
             if (enabled.contains(d.type())) {
-                raw.addAll(d.detect(text));
+                raw.addAll(d.detect(text, ctx));
             }
         }
         if (itn) {
@@ -177,7 +182,12 @@ public final class MaskingEngine {
     }
 
     public Result mask(String text, Set<EntityType> enabled, Map<EntityType, MaskingPolicy> policies, String salt) {
-        List<Span> spans = detect(text, enabled);
+        return mask(text, enabled, policies, salt, DetectionContext.NONE);
+    }
+
+    public Result mask(String text, Set<EntityType> enabled, Map<EntityType, MaskingPolicy> policies, String salt,
+                       DetectionContext ctx) {
+        List<Span> spans = detect(text, enabled, ctx);
         String masked = Masker.apply(text, spans, t -> policies.getOrDefault(t, MaskingPolicy.TAG), salt);
         return new Result(masked, spans);
     }

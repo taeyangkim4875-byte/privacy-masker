@@ -14,15 +14,23 @@ public final class JobDtos {
     public record ColumnSpec(String column, String mode, List<String> entities) {
     }
 
+    /**
+     * 대화 문맥(선택): 통화 ID·화자 컬럼과 상담사 화자 값. 셋 다 있으면 상담사 이름 질문 다음 고객 발화에 문맥을 준다.
+     * 컬럼은 작업에 포함된 컬럼(복사·마스킹) 중에서 고른다. 질문 판별은 첫 마스킹 컬럼(발화) 값으로 한다.
+     */
+    public record DialogSpec(String callColumn, String speakerColumn, String agentValue) {
+    }
+
     public record JobRequest(String name, Long connectionId, String sourceTable, String pkColumn,
                              String targetTable, Integer chunkSize, String cron, Boolean enabled,
-                             List<ColumnSpec> columns, Map<String, String> policies, Boolean createTarget) {
+                             List<ColumnSpec> columns, Map<String, String> policies, Boolean createTarget,
+                             DialogSpec dialog) {
     }
 
     public record JobView(long id, String name, long connectionId, String connectionName,
                           String sourceTable, String pkColumn, String targetTable, int chunkSize,
                           String cron, boolean enabled, List<ColumnSpec> columns, Map<String, String> policies,
-                          String watermark, boolean running, ExecutionView lastExecution) {
+                          String watermark, boolean running, ExecutionView lastExecution, DialogSpec dialog) {
     }
 
     public record SpanView(int start, int end, String type, String label, String detector) {

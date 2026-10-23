@@ -32,7 +32,8 @@ class SeedRegressionTest {
             "stt_call_history", 2, "tts_request_log", 0, "tts_ssml_log", 2);
     private static final Set<EntityType> NUMERIC = Set.of(EntityType.PHONE, EntityType.CARD, EntityType.RRN, EntityType.ACCOUNT);
 
-    record Row(String table, int no, String key, String text) {
+    /** speaker: stt_call_history 의 AGENT/CUSTOMER, 그 밖의 테이블은 null */
+    record Row(String table, int no, String key, String text, String speaker) {
     }
 
     static List<Row> seedRows() throws IOException {
@@ -52,7 +53,8 @@ class SeedRegressionTest {
             while (m.find()) {
                 lits.add(m.group(1).replace("''", "'").replace("\\\\", "\\"));
             }
-            rows.add(new Row(table, ++no, lits.get(0), lits.get(TEXT_COLUMN.get(table))));
+            rows.add(new Row(table, ++no, lits.get(0), lits.get(TEXT_COLUMN.get(table)),
+                    table.equals("stt_call_history") ? lits.get(1) : null));
         }
         return rows;
     }

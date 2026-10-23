@@ -1,10 +1,12 @@
 package com.piimask.app.job;
 
 import com.piimask.app.job.JobDtos.ColumnSpec;
+import com.piimask.app.job.JobDtos.DialogSpec;
 import com.piimask.app.support.ApiException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,6 +16,7 @@ import java.util.Arrays;
 import java.util.List;
 
 @Repository("maskingJobRepository") // Spring Batch 의 jobRepository 빈과 이름이 겹치지 않게
+@DependsOn("metaMigration") // masking_job 컬럼 추가(MetaMigration)가 끝난 뒤에 쓰인다
 public class JobRepository {
 
     private final JdbcTemplate jdbc;
@@ -28,9 +31,16 @@ public class JobRepository {
                 rs.getLong("id"), rs.getString("name"), rs.getLong("connection_id"),
                 rs.getString("source_table"), rs.getString("pk_column"), rs.getString("target_table"),
                 rs.getInt("chunk_size"), rs.getString("cron"), rs.getBoolean("enabled"),
-                List.of(), JobDef.parsePolicies(rs.getString("policies")), rs.getString("hash_salt")));
+                List.of(), JobDef.parsePolicies(rs.getString("policies")), rs.getString("hash_salt"),
+                dialogOf(rs.getString("dialog_call_column"), rs.getString("dialog_speaker_column"),
+                        rs.getString("dialog_agent_value"))));
         return base.stream().map(j -> new JobDef(j.id(), j.name(), j.connectionId(), j.sourceTable(), j.pkColumn(),
-                j.targetTable(), j.chunkSize(), j.cron(), j.enabled(), columns(j.id()), j.policies(), j.hashSalt())).toList();
+                j.targetTable(), j.chunkSize(), j.cron(), j.enabled(), columns(j.id()), j.policies(), j.hashSalt(),
+                j.dialog())).toList();
+    }
+
+    private static DialogSpec dialogOf(String call, String speaker, String agent) {
+        return call == null || speaker == null || agent == null ? null : new DialogSpec(call, speaker, agent);
     }
 
     public JobDef get(long id) {
@@ -52,8 +62,9 @@ public class JobRepository {
         KeyHolder kh = new GeneratedKeyHolder();
         jdbc.update(con -> {
             PreparedStatement ps = con.prepareStatement(
-                    "INSERT INTO masking_job(name, connection_id, source_table, pk_column, target_table, chunk_size, cron, enabled, policies, hash_salt) "
-                            + "VALUES (?,?,?,?,?,?,?,?,?,?)", new String[]{"ID"});
+                    "INSERT INTO masking_job(name, connection_id, source_table, pk_column, target_table, chunk_size, cron, enabled, policies, hash_salt, "
+                            + "dialog_call_column, dialog_speaker_column, dialog_agent_value) "
+                            + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", new String[]{"ID"});
             ps.setString(1, j.name());
             ps.setLong(2, j.connectionId());
             ps.setString(3, j.sourceTable());
@@ -68,6 +79,10 @@ public class JobRepository {
             ps.setBoolean(8, j.enabled());
             ps.setString(9, JobDef.policiesCsv(j.policies()));
             ps.setString(10, j.hashSalt());
+            DialogSpec d = j.hasDialog() ? j.dialog() : null;
+            ps.setString(11, d == null ? null : d.callColumn());
+            ps.setString(12, d == null ? null : d.speakerColumn());
+            ps.setString(13, d == null ? null : d.agentValue());
             return ps;
         }, kh);
         long id = kh.getKey().longValue();
@@ -78,9 +93,12 @@ public class JobRepository {
     @Transactional
     public void update(long id, JobDef j) {
         jdbc.update("UPDATE masking_job SET name=?, connection_id=?, source_table=?, pk_column=?, target_table=?, chunk_size=?, "
-                        + "cron=?, enabled=?, policies=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                        + "cron=?, enabled=?, policies=?, dialog_call_column=?, dialog_speaker_column=?, dialog_agent_value=?, "
+                        + "updated_at=CURRENT_TIMESTAMP WHERE id=?",
                 j.name(), j.connectionId(), j.sourceTable(), j.pkColumn(), j.targetTable(), j.chunkSize(),
-                j.cron(), j.enabled(), JobDef.policiesCsv(j.policies()), id);
+                j.cron(), j.enabled(), JobDef.policiesCsv(j.policies()),
+                j.hasDialog() ? j.dialog().callColumn() : null, j.hasDialog() ? j.dialog().speakerColumn() : null,
+                j.hasDialog() ? j.dialog().agentValue() : null, id);
         jdbc.update("DELETE FROM masking_column WHERE job_id = ?", id);
         saveColumns(id, j.columns());
     }

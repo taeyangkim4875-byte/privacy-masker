@@ -7,6 +7,7 @@ import com.piimask.app.connection.ConnectionDtos.ColumnInfo;
 import com.piimask.app.connection.ConnectionService;
 import com.piimask.app.connection.SchemaService;
 import com.piimask.app.job.JobDtos.ColumnSpec;
+import com.piimask.app.job.JobDtos.DialogSpec;
 import com.piimask.app.job.JobDtos.JobRequest;
 import com.piimask.app.job.JobDtos.JobView;
 import com.piimask.app.support.ApiException;
@@ -189,13 +190,47 @@ public class JobService {
                 throw ApiException.badRequest("이 cron 은 실행될 날짜가 없습니다(예: 2월 30일)");
             }
         }
+        DialogSpec dialog = dialogOf(r.dialog(), cols);
         try {
             return new JobDef(id, r.name().trim(), r.connectionId(), r.sourceTable(), r.pkColumn(), r.targetTable(),
                     chunk, cron, r.enabled() == null || r.enabled(), List.copyOf(cols),
-                    JobDef.parsePolicies(r.policies()), salt);
+                    JobDef.parsePolicies(r.policies()), salt, dialog);
         } catch (IllegalArgumentException | NullPointerException e) {
             throw ApiException.badRequest("마스킹 정책 값이 올바르지 않습니다");
         }
+    }
+
+    /** 대화 문맥 설정 검증: 모두 비우면 사용 안 함, 하나라도 있으면 셋 다 필요. 컬럼은 작업에 포함된 컬럼이어야 한다 */
+    public static DialogSpec dialogOf(DialogSpec d, List<ColumnSpec> cols) {
+        if (d == null) {
+            return null;
+        }
+        String call = blankToNull(d.callColumn());
+        String speaker = blankToNull(d.speakerColumn());
+        String agent = blankToNull(d.agentValue());
+        if (call == null && speaker == null && agent == null) {
+            return null;
+        }
+        if (call == null || speaker == null || agent == null) {
+            throw ApiException.badRequest("대화 문맥은 통화 ID 컬럼·화자 컬럼·상담사 값을 모두 정하거나 모두 비워 주세요");
+        }
+        Set<String> included = cols.stream().map(ColumnSpec::column).collect(Collectors.toSet());
+        for (String c : List.of(call, speaker)) {
+            if (!included.contains(c)) {
+                throw ApiException.badRequest("대화 문맥 컬럼은 작업에 포함된(복사·마스킹) 컬럼이어야 합니다: " + c);
+            }
+        }
+        if (call.equals(speaker)) {
+            throw ApiException.badRequest("통화 ID 컬럼과 화자 컬럼은 달라야 합니다");
+        }
+        if (agent.length() > 50) {
+            throw ApiException.badRequest("상담사 값은 50자까지입니다");
+        }
+        return new DialogSpec(call, speaker, agent);
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s.strip();
     }
 
     private JobView view(JobDef j) {
@@ -208,7 +243,7 @@ public class JobService {
         return new JobView(j.id(), j.name(), j.connectionId(), connName, j.sourceTable(), j.pkColumn(),
                 j.targetTable(), j.chunkSize(), j.cron(), j.enabled(), j.columns(),
                 JobDef.policiesView(j.policies()), repo.watermark(j.id()), runner.isRunning(j.id()),
-                executions.last(j.id()));
+                executions.last(j.id()), j.dialog());
     }
 
     private static String newSalt() {

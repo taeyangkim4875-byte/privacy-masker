@@ -80,7 +80,7 @@ abstract class BatchItSupport {
                 new ColumnSpec("speaker", JobDef.COPY, List.of()),
                 new ColumnSpec("utterance", JobDef.MASK, List.of()),
                 new ColumnSpec("created_at", JobDef.COPY, List.of()));
-        return jobService.create(new JobRequest(name, connId, src, "id", tgt, chunk, null, true, cols, null, true)).id();
+        return jobService.create(new JobRequest(name, connId, src, "id", tgt, chunk, null, true, cols, null, true, null)).id();
     }
 
     /** 실행하고 끝까지 기다린다. 실행 전후 원천 체크섬이 같아야 한다(원천은 SELECT 만) */

@@ -137,6 +137,35 @@ final class ItDb {
         return out;
     }
 
+    /** [id, call_id, speaker, 원천 utterance, 대상 utterance] (id 순) */
+    List<Object[]> dialogPairs(String src, String tgt) {
+        String sql = "SELECT s.id, s.call_id, s.speaker, s.utterance, g.utterance FROM " + t(src) + " s JOIN " + t(tgt)
+                + " g ON g.id = s.id ORDER BY s.id";
+        List<Object[]> out = new ArrayList<>();
+        try (Connection c = connect(); Statement st = c.createStatement(); ResultSet rs = st.executeQuery(sql)) {
+            while (rs.next()) {
+                out.add(new Object[]{rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5)});
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("SQL 실패 [SQLState=" + e.getSQLState() + "]");
+        }
+        return out;
+    }
+
+    /** 원천 앞쪽 n 행 [id, call_id, speaker, utterance] (id 순) */
+    List<Object[]> dialogPairsSource(String src, int n) {
+        String sql = "SELECT id, call_id, speaker, utterance FROM " + t(src) + " ORDER BY id LIMIT " + n;
+        List<Object[]> out = new ArrayList<>();
+        try (Connection c = connect(); Statement st = c.createStatement(); ResultSet rs = st.executeQuery(sql)) {
+            while (rs.next()) {
+                out.add(new Object[]{rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4)});
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("SQL 실패 [SQLState=" + e.getSQLState() + "]");
+        }
+        return out;
+    }
+
     List<String> texts(String table) {
         List<String> out = new ArrayList<>();
         try (Connection c = connect(); Statement st = c.createStatement();

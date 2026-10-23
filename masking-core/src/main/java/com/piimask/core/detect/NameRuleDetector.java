@@ -1,5 +1,6 @@
 package com.piimask.core.detect;
 
+import com.piimask.core.DetectionContext;
 import com.piimask.core.EntityType;
 import com.piimask.core.Span;
 import com.piimask.core.dict.NameDictionary;
@@ -26,6 +27,9 @@ import java.util.regex.Pattern;
  * 6. 점수화(약한 단서): "김태양인데요", "박지훈한테", "받는 분 정하윤" 처럼 위 단서가 없을 때
  *    후보(어절 첫머리의 성씨 + 1~2음절)에 단서·이름 음절·길이 점수를 매겨 {@link #THRESHOLD} 이상이면 잡는다.
  *    강한 단서 규칙(1~5)과 겹치면 그쪽을 쓰므로 점수화는 잡는 범위를 넓히기만 한다. 탐지기 이름은 "이름(점수)".
+ *
+ * 7. 화자 문맥: 직전 상담사 발화가 이름 질문이면({@link DetectionContext#nameExpected()}) 단서 없는 답("네 김태양")도 잡는다.
+ *    발화가 추임새·서술을 빼면 이름 하나뿐일 때만. 탐지기 이름은 "이름(문맥)".
  *
  * 성씨와 예외어는 {@link NameDictionary} 에서 온다. 예외어가 나온 자리 안에 완전히 들어가는 스팬은 버린다
  * ("지점장님" 의 "지점장", "명세서입니다" 의 "명세서"). 진짜 이름이 예외어 밖으로 나가면 남는다.
@@ -55,6 +59,7 @@ public final class NameRuleDetector implements Detector {
     private static final String DIGIT_SYLLABLES = "공영일이삼사오육칠팔구";
 
     public static final String SCORE_DETECTOR = "이름(점수)";
+    public static final String CONTEXT_DETECTOR = "이름(문맥)";
 
     // ---- 점수화 가중치(한 곳에서만 바꾼다. 바꾸면 NameEvalTest·SeedRegressionTest 수치를 확인) ----
     /** 이 점수 이상이면 이름. Recall 우선: 약한 단서 하나 + 흔한 이름 음절이면 통과 */
@@ -69,6 +74,15 @@ public final class NameRuleDetector implements Detector {
     static final int W_NON_NAME = -3;
     /** 성씨 + 2음절 */
     static final int W_LONG = 1;
+    /** 이름 질문에 대한 답이고 발화가 이름 하나뿐(화자 문맥) */
+    static final int W_CONTEXT = 3;
+
+    /** 문맥 규칙: 이름 앞에 올 수 있는 추임새 */
+    private static final String[] FILLERS = {"저는", "네네", "네", "예", "아", "어", "음", "저", "응"};
+    /** 문맥 규칙: 남은 말의 끝 음절이 이것이면 이름으로 보지 않는다(어미·명사 끝) */
+    private static final String ANSWER_BAD_FINALS = "세해가중";
+    /** 문맥 규칙: 이름 뒤에 올 수 있는 서술(긴 것부터) */
+    private static final String[] ANSWER_ENDINGS = {"입니다", "이에요", "이고요", "예요", "이요", "이고", "요"};
 
     /** 이름 바로 뒤에 붙는 약한 단서 */
     private static final String[] RIGHT_ATTACHED = {"인데요", "인데", "한테", "에게", "께서", "께", "이라는", "라는", "이란", "이랑"};
@@ -193,6 +207,114 @@ public final class NameRuleDetector implements Detector {
         List<Span> out = new ArrayList<>(strong);
         out.addAll(withoutExceptions(text, scored));
         return out;
+    }
+
+    /**
+     * 이름 질문에 대한 답(문맥)일 때: 다른 이름 규칙이 아무것도 못 잡았고 발화가 사실상 이름 하나뿐이면 이름으로 본다.
+     * "네 김태양", "김태양요", "음 조민", "임하윤 이요". 앞 추임새와 뒤 서술·문장부호만 허용한다.
+     */
+    @Override
+    public List<Span> detect(String text, DetectionContext ctx) {
+        List<Span> spans = detect(text);
+        if (ctx == null || !ctx.nameExpected() || !spans.isEmpty() || text == null) {
+            return spans;
+        }
+        int[] c = answerName(text);
+        if (c == null) {
+            return spans;
+        }
+        return withoutExceptions(text, List.of(new Span(c[0], c[1], EntityType.NAME, CONTEXT_DETECTOR)));
+    }
+
+    /** 발화에서 추임새·서술을 걷어낸 나머지가 이름 하나면 그 위치, 아니면 null */
+    int[] answerName(String text) {
+        int s = 0;
+        int e = trimRight(text, 0, text.length());
+        for (String end : ANSWER_ENDINGS) {
+            if (e - end.length() > s && text.startsWith(end, e - end.length())) {
+                e -= end.length();
+                break;
+            }
+        }
+        e = trimRight(text, s, e);
+        boolean moved = true;
+        while (moved) {
+            moved = false;
+            s = skipSeparators(text, s, e);
+            for (String f : FILLERS) {
+                int fe = s + f.length();
+                if (text.startsWith(f, s) && fe < e && isSeparator(text.charAt(fe))) {
+                    s = fe;
+                    moved = true;
+                    break;
+                }
+            }
+        }
+        s = skipSeparators(text, s, e);
+        int len = e - s;
+        if (len < 2 || len > 4) {
+            return null;
+        }
+        String w = text.substring(s, e);
+        if (!w.chars().allMatch(ch -> isHangul((char) ch)) || hints.place(w) || exceptionWords.contains(w)
+                || w.chars().allMatch(ch -> DIGIT_SYLLABLES.indexOf(ch) >= 0)) {
+            return null;
+        }
+        for (String p : PARTICLES) {
+            if (w.length() > p.length() && w.endsWith(p) && exceptionWords.contains(w.substring(0, w.length() - p.length()))) {
+                return null;
+            }
+        }
+        // 끝 음절이 어미·명사 끝 같으면 이름이 아니다("여보세요" 의 "여보세", "이상해요", "이따가요", "고민중")
+        if (ANSWER_BAD_FINALS.indexOf(w.charAt(len - 1)) >= 0) {
+            return null;
+        }
+        for (int sl = 2; sl >= 1; sl--) {
+            int gl = len - sl;
+            if (gl < 1 || gl > 2 || !surnames.contains(w.substring(0, sl))) {
+                continue;
+            }
+            int score = W_CONTEXT;
+            boolean allCommon = true;
+            for (int k = sl; k < len; k++) {
+                char ch = w.charAt(k);
+                if (hints.nonName(ch)) {
+                    return null;
+                }
+                if (!hints.commonGiven(ch)) {
+                    score += W_UNCOMMON;
+                    allCommon = false;
+                }
+            }
+            if (allCommon) {
+                score += W_ALL_COMMON;
+            }
+            if (gl >= 2) {
+                score += W_LONG;
+            }
+            if (score >= THRESHOLD) {
+                return new int[]{s, e};
+            }
+        }
+        return null;
+    }
+
+    private static int trimRight(String text, int s, int e) {
+        while (e > s && (isSeparator(text.charAt(e - 1)) || ".!?~。".indexOf(text.charAt(e - 1)) >= 0)) {
+            e--;
+        }
+        return e;
+    }
+
+    private static int skipSeparators(String text, int s, int e) {
+        while (s < e && isSeparator(text.charAt(s))) {
+            s++;
+        }
+        return s;
+    }
+
+    private static boolean isSeparator(char c) {
+        return c == ' ' || c == ',' || c == '\t';
     }
 
     /** 점수화 후보: 강한 단서 스팬과 겹치지 않는 자리에서만 */
@@ -352,8 +474,11 @@ public final class NameRuleDetector implements Detector {
         List<Span> out = new ArrayList<>(spans.size());
         for (Span s : spans) {
             String w = text.substring(s.start(), s.end());
+            // "공" 이 든 숫자 읽기 음절만의 말("공일공이요" 의 "공일공")은 번호다(ITN 이 따로 가린다).
+            // "이영", "오영일" 처럼 숫자 음절로만 된 진짜 이름이 있으므로 "공" 이 없으면 그대로 둔다
             boolean excepted = hits.stream().anyMatch(h -> h[0] <= s.start() && s.end() <= h[1])
-                    || exceptionEndings.stream().anyMatch(w::endsWith);
+                    || exceptionEndings.stream().anyMatch(w::endsWith)
+                    || (w.indexOf('공') >= 0 && w.chars().allMatch(c -> DIGIT_SYLLABLES.indexOf(c) >= 0));
             if (!excepted) {
                 out.add(s);
             }

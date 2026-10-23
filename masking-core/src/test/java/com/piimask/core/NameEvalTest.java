@@ -27,7 +27,14 @@ class NameEvalTest {
     private final MaskingEngine scored = MaskingEngine.withDefaults();
     private final MaskingEngine ruleOnly = scored.withoutNameScoring();
 
-    record Sample(int line, String section, String text, List<int[]> gold) {
+    record Sample(int line, String section, String text, List<int[]> gold, DetectionContext ctx) {
+        Sample(int line, String section, String text, List<int[]> gold) {
+            this(line, section, text, gold, DetectionContext.NONE);
+        }
+
+        Sample withoutContext() {
+            return new Sample(line, section, text, gold, DetectionContext.NONE);
+        }
     }
 
     /** tp(정답 중 잡힌 수), gold, correct(예측 중 맞은 수), predicted */
@@ -99,6 +106,54 @@ class NameEvalTest {
         return out;
     }
 
+    /**
+     * 대화 형식 평가셋: "상담사: …" / "고객: …", 빈 줄로 통화 구분, 이름은 [[ ]]. 통화마다 DialogTracker 로 문맥을 붙인다.
+     * 평가 대상은 고객 발화만(상담사 발화의 이름은 다른 규칙 몫).
+     */
+    static List<Sample> dialogFile(String resource) throws IOException {
+        List<Sample> marked = markedFile(resource);
+        List<Sample> out = new ArrayList<>();
+        com.piimask.core.dialog.DialogTracker tracker = null;
+        int lastLine = -10;
+        int call = 0;
+        for (Sample m : marked) {
+            if (m.line() != lastLine + 1) {
+                tracker = new com.piimask.core.dialog.DialogTracker(100);
+                call++;
+            }
+            lastLine = m.line();
+            boolean agent = m.text().startsWith("상담사:");
+            int cut = m.text().indexOf(':') + 1;
+            while (cut < m.text().length() && m.text().charAt(cut) == ' ') {
+                cut++;
+            }
+            String text = m.text().substring(cut);
+            int shift = cut;
+            List<int[]> gold = m.gold().stream().map(g -> new int[]{g[0] - shift, g[1] - shift}).toList();
+            DetectionContext ctx = tracker.next("call-" + call, agent, text);
+            if (!agent) {
+                out.add(new Sample(m.line(), m.section(), text, gold, ctx));
+            }
+        }
+        return out;
+    }
+
+    /** 시드 행에 통화 ID·화자로 문맥을 붙인 것(stt_call_history 만, 다른 테이블은 문맥 없음) */
+    static List<Sample> seedWithContext() throws IOException {
+        List<SeedRegressionTest.Row> rows = SeedRegressionTest.seedRows();
+        List<Sample> plain = seed();
+        com.piimask.core.dialog.DialogTracker tracker = new com.piimask.core.dialog.DialogTracker(10_000);
+        List<Sample> out = new ArrayList<>();
+        for (int i = 0; i < rows.size(); i++) {
+            SeedRegressionTest.Row r = rows.get(i);
+            Sample p = plain.get(i);
+            DetectionContext ctx = r.speaker() == null ? DetectionContext.NONE
+                    : tracker.next(r.key(), "AGENT".equals(r.speaker()), r.text());
+            out.add(new Sample(p.line(), p.section(), p.text(), p.gold(), ctx));
+        }
+        return out;
+    }
+
     /** 시드 행 + 정답 파일(행 순서대로 "|" 구분 이름). 정답은 그 이름이 나온 모든 자리 */
     static List<Sample> seed() throws IOException {
         List<SeedRegressionTest.Row> rows = SeedRegressionTest.seedRows();
@@ -141,7 +196,7 @@ class NameEvalTest {
     }
 
     static void score(MaskingEngine e, Sample s, Score acc) {
-        List<Span> pred = e.detect(s.text(), NAME);
+        List<Span> pred = e.detect(s.text(), NAME, s.ctx());
         acc.gold += s.gold().size();
         acc.predicted += pred.size();
         boolean missed = false;
@@ -265,6 +320,56 @@ class NameEvalTest {
                 + "건, 점수화가 늘린 줄 " + lines);
         assertTrue(samples.size() >= 300);
         assertTrue(on - off <= 3, "점수화 오탐: " + lines);
+    }
+
+    private void dialogReport(String title, List<Sample> withCtx, Baseline base) {
+        List<Sample> noCtx = withCtx.stream().map(Sample::withoutContext).toList();
+        Map<String, Score> off = bySection(scored, noCtx);
+        Map<String, Score> on = bySection(scored, withCtx);
+        StringBuilder r = new StringBuilder(title + " 고객 발화 " + withCtx.size() + "건, 문맥 끔 → 켬\n");
+        on.forEach((k, v) -> r.append("  ").append(k).append(": ").append(off.get(k)).append("  →  ").append(v).append('\n'));
+        r.append("  켬 누락 줄: ").append(on.get("전체").missLines).append('\n');
+        r.append("  켬 오탐 줄: ").append(on.get("전체").fpLines);
+        System.out.println(r);
+        assertTrue(on.get("전체").tp >= off.get("전체").tp, "문맥으로 놓친 이름이 생김");
+        assertTrue(on.get("positive").recall() >= base.weakRecall(), "문맥 Recall: " + on.get("positive"));
+        assertTrue(on.get("전체").precision() >= base.precision(), "문맥 Precision: " + on.get("전체"));
+        assertTrue(on.get("negative").predicted <= base.negativeFp(), "오탐 줄: " + on.get("negative").fpLines);
+    }
+
+    /** 대화 문맥 개발용 평가셋(규칙을 맞추며 씀) */
+    @Test
+    void dialog_eval_set() throws IOException {
+        dialogReport("대화 평가셋(개발용)", dialogFile("/eval/names-dialog.txt"), new Baseline(1.0, 1.0, 0));
+    }
+
+    /** 대화 문맥 개발용 평가셋 2(처음엔 보류셋이었으나 규칙 조정에 섞여 개발용으로 돌림) */
+    @Test
+    void dialog_dev2_eval_set() throws IOException {
+        dialogReport("대화 평가셋 2(개발용)", dialogFile("/eval/names-dialog-dev2.txt"), new Baseline(1.0, 1.0, 0));
+    }
+
+    /** 대화 문맥 보류셋: 리뷰 지적 수정 전에 써 두고 수정 후 한 번 측정. 이 파일을 보고 규칙을 고치지 않는다 */
+    @Test
+    void dialog_holdout_eval_set() throws IOException {
+        dialogReport("대화 보류셋", dialogFile("/eval/names-holdout-dialog.txt"), DIALOG_HOLDOUT_BASELINE);
+    }
+
+    /** 대화 보류셋 첫 측정값(R 0.750 9/12, P 1.000, 오탐 0)보다 조금 낮게 둔 기준선. 누락 3건: 끊긴 질문("성함이"), 추임새 "예예", "다시 한 번만요" */
+    private static final Baseline DIALOG_HOLDOUT_BASELINE = new Baseline(0.70, 0.95, 1);
+
+    /** 시드: 문맥 끔 → 켬. "네 {이름}" 처럼 단서 없는 답을 문맥으로 잡는다 */
+    @Test
+    void seed_dialog_context_eval() throws IOException {
+        List<Sample> withCtx = seedWithContext();
+        Map<String, Score> off = bySection(scored, withCtx.stream().map(Sample::withoutContext).toList());
+        Map<String, Score> on = bySection(scored, withCtx);
+        StringBuilder r = new StringBuilder("이름 평가(시드 " + withCtx.size() + "행), 화자 문맥 끔 → 켬\n");
+        on.forEach((k, v) -> r.append("  ").append(k).append(": ").append(off.get(k)).append("  →  ").append(v).append('\n'));
+        r.append("  켬 오탐 행(처음 20): ").append(on.get("전체").fpLines.stream().limit(20).toList());
+        System.out.println(r);
+        assertTrue(on.get("전체").tp > off.get("전체").tp, "문맥이 시드 Recall 을 올려야 함");
+        assertTrue(on.get("전체").precision() >= 0.99, "시드 Precision: " + on.get("전체"));
     }
 
     @Test

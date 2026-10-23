@@ -1,6 +1,7 @@
 package com.piimask.app.job;
 
 import com.piimask.app.job.JobDtos.ColumnSpec;
+import com.piimask.app.job.JobDtos.DialogSpec;
 import com.piimask.core.EntityType;
 import com.piimask.core.mask.MaskingPolicy;
 
@@ -15,10 +16,16 @@ import java.util.stream.Collectors;
 /** 저장된(또는 저장 전 미리보기용) 마스킹 작업 정의 */
 public record JobDef(long id, String name, long connectionId, String sourceTable, String pkColumn,
                      String targetTable, int chunkSize, String cron, boolean enabled,
-                     List<ColumnSpec> columns, Map<EntityType, MaskingPolicy> policies, String hashSalt) {
+                     List<ColumnSpec> columns, Map<EntityType, MaskingPolicy> policies, String hashSalt,
+                     DialogSpec dialog) {
 
     public static final String MASK = "MASK";
     public static final String COPY = "COPY";
+
+    /** 대화 문맥을 쓰는지(통화 ID·화자 컬럼·상담사 값이 모두 있음) */
+    public boolean hasDialog() {
+        return dialog != null && dialog.callColumn() != null && dialog.speakerColumn() != null && dialog.agentValue() != null;
+    }
 
     public List<ColumnSpec> maskColumns() {
         return columns.stream().filter(c -> MASK.equals(c.mode())).toList();

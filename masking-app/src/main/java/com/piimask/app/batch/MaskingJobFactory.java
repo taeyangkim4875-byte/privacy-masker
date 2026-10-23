@@ -66,10 +66,11 @@ class MaskingJobFactory {
                 firstMaskIndex, integerPk, job.chunkSize(), state.watermark);
         // 실행을 만들 때의 엔진(사용자 사전 포함)을 끝까지 쓴다. 도중에 사전이 바뀌어도 한 실행 안의 결과는 섞이지 않는다
         MaskingProcessor processor = new MaskingProcessor(engines.current(), copyCols.size(), maskEntities,
-                job.policies(), job.hashSalt());
+                job.policies(), job.hashSalt(), dialogBinding(job, cols, firstMaskIndex, source, integerPk, state.watermark));
         UpsertTargetWriter writer = new UpsertTargetWriter(source, job.targetTable(), cols, state);
         ProgressListener progress = new ProgressListener(state, jobs, executions);
 
+        // fault-tolerant(재시도·건너뛰기)로 바꾸지 않는다: 대화 문맥(DialogBinding)은 행을 PK 순서로 한 번씩만 본다고 가정한다
         Step step = new StepBuilder("mask", batchRepository)
                 .<SourceRow, MaskedRow>chunk(job.chunkSize())
                 .transactionManager(metaTx)
@@ -80,5 +81,22 @@ class MaskingJobFactory {
                 .interruptionPolicy(progress)
                 .build();
         return new JobBuilder(jobName(job.id()), batchRepository).start(step).build();
+    }
+
+    /** 대화 문맥 설정이 있으면 행 값 배열의 위치로 묶는다. 질문 판별은 첫 마스킹 컬럼(발화) */
+    static DialogBinding dialogBinding(JobDef job, List<String> cols, int firstMaskIndex, DataSource source, boolean integerPk,
+                                       String startWatermark) {
+        if (!job.hasDialog()) {
+            return null;
+        }
+        int call = cols.indexOf(job.dialog().callColumn());
+        int speaker = cols.indexOf(job.dialog().speakerColumn());
+        if (call < 0 || speaker < 0) {
+            return null;
+        }
+        String textColumn = cols.get(firstMaskIndex);
+        return new DialogBinding(call, speaker, firstMaskIndex, job.dialog().agentValue(),
+                new SourcePreviousRow(source, job.sourceTable(), job.pkColumn(), job.dialog().callColumn(),
+                        job.dialog().speakerColumn(), textColumn, integerPk), startWatermark);
     }
 }
